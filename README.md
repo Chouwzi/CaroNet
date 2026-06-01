@@ -7,7 +7,7 @@ Project dự kiến dùng C#, .NET 10 LTS, WinUI 3 / Windows App SDK, raw `Syste
 ## Trạng thái hiện tại
 
 - [x] Tạo `.gitignore` cho .NET / Visual Studio / WinUI / MSIX.
-- [x] Sắp xếp solution theo yêu cầu môn học: code nằm trong `Code/`, tài liệu nằm trong `docs/`.
+- [x] Sắp xếp solution theo yêu cầu môn học: code và tài liệu kỹ thuật nằm trong `Code/`.
 - [x] Tách project nền: client WinUI, server host, shared library, storage library.
 - [x] Thêm test project ban đầu cho `CaroNet.Shared`.
 - [ ] Hiện thực rule engine Caro.
@@ -85,11 +85,10 @@ CaroNet/
     tests/
       CaroNet.Shared.Tests/
 
-  docs/
-    architecture.md
-    protocol.md
-    test-plan.md
-    sprints/
+    docs/
+      architecture.md
+      protocol.md
+      test-plan.md
 ```
 
 ## Cách chạy
@@ -156,7 +155,7 @@ Message nhóm chính:
 - [ ] `Reconnect`
 - [ ] `Error`
 
-Chi tiết sẽ được cập nhật trong [docs/protocol.md](docs/protocol.md).
+Chi tiết sẽ được cập nhật trong [Code/docs/protocol.md](Code/docs/protocol.md).
 
 ## Checklist tính năng
 
