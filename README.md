@@ -7,7 +7,7 @@ Project dự kiến dùng C#, .NET 10 LTS, WinUI 3 / Windows App SDK, raw `Syste
 ## Trạng thái hiện tại
 
 - [x] Tạo `.gitignore` cho .NET / Visual Studio / WinUI / MSIX.
-- [x] Sắp xếp solution theo cấu trúc `src/`, `tests/`, `docs/`.
+- [x] Sắp xếp solution theo yêu cầu môn học: code nằm trong `Code/`, tài liệu nằm trong `docs/`.
 - [x] Tách project nền: client WinUI, server host, shared library, storage library.
 - [x] Thêm test project ban đầu cho `CaroNet.Shared`.
 - [ ] Hiện thực rule engine Caro.
@@ -52,36 +52,38 @@ Nguyên tắc quan trọng:
 
 ```text
 CaroNet/
-  CaroNet.slnx
   README.md
 
-  src/
-    CaroNet.Client.WinUI/
-      Assets/
-      Controls/
-      Services/
-      ViewModels/
-      Views/
-      App.xaml
-      Package.appxmanifest
+  Code/
+    CaroNet.slnx
 
-    CaroNet.Server.Host/
-      GameRooms/
-      Networking/
-      Services/
-      Program.cs
+    src/
+      CaroNet.Client.WinUI/
+        Assets/
+        Controls/
+        Services/
+        ViewModels/
+        Views/
+        App.xaml
+        Package.appxmanifest
 
-    CaroNet.Shared/
-      Game/
-      Models/
-      Protocol/
+      CaroNet.Server.Host/
+        GameRooms/
+        Networking/
+        Services/
+        Program.cs
 
-    CaroNet.Storage/
-      Matches/
-      Profiles/
+      CaroNet.Shared/
+        Game/
+        Models/
+        Protocol/
 
-  tests/
-    CaroNet.Shared.Tests/
+      CaroNet.Storage/
+        Matches/
+        Profiles/
+
+    tests/
+      CaroNet.Shared.Tests/
 
   docs/
     architecture.md
@@ -101,20 +103,20 @@ Yêu cầu:
 Restore, build và test:
 
 ```powershell
-dotnet restore .\CaroNet.slnx
-dotnet build .\CaroNet.slnx -c Debug -p:Platform=x64
-dotnet test .\CaroNet.slnx -c Debug -p:Platform=x64
+dotnet restore .\Code\CaroNet.slnx
+dotnet build .\Code\CaroNet.slnx -c Debug -p:Platform=x64
+dotnet test .\Code\CaroNet.slnx -c Debug -p:Platform=x64
 ```
 
 Chạy server host skeleton:
 
 ```powershell
-dotnet run --project .\src\CaroNet.Server.Host\CaroNet.Server.Host.csproj
+dotnet run --project .\Code\src\CaroNet.Server.Host\CaroNet.Server.Host.csproj
 ```
 
 Chạy WinUI client:
 
-1. Mở `CaroNet.slnx` bằng Visual Studio.
+1. Mở `Code/CaroNet.slnx` bằng Visual Studio.
 2. Chọn startup project `CaroNet.Client.WinUI`.
 3. Chọn platform `x64`.
 4. Run bằng Visual Studio để dùng đúng tooling WinUI/MSIX.
