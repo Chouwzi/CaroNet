@@ -1,28 +1,28 @@
 name: Task
-description: Tao task phat trien cho CaroNet
+description: Tạo task phát triển cho CaroNet
 title: "[Task]: "
 labels: ["needs-review"]
 body:
   - type: markdown
     attributes:
       value: |
-        Dung template nay cho moi task code, test, UI, storage, protocol, server, client hoac tai lieu ky thuat.
-        Task chi duoc tinh Done khi co PR/evidence va owner giai thich duoc phan minh lam.
+        Dùng template này cho mọi task code, test, UI, storage, protocol, server, client hoặc tài liệu kỹ thuật.
+        Task chỉ được tính Done khi có PR/evidence và owner giải thích được phần mình làm.
 
   - type: input
     id: goal
     attributes:
-      label: Muc tieu
-      description: Task nay can hoan thanh dieu gi trong mot cau?
-      placeholder: "Vi du: Them rule engine kiem tra thang 5 quan lien tiep"
+      label: Mục tiêu
+      description: Task này cần hoàn thành điều gì trong một câu?
+      placeholder: "Ví dụ: Thêm rule engine kiểm tra thắng 5 quân liên tiếp"
     validations:
       required: true
 
   - type: dropdown
     id: priority
     attributes:
-      label: Do uu tien
-      description: P0 la bat buoc cho demo, P1 la nen co, P2 la bonus.
+      label: Độ ưu tiên
+      description: P0 là bắt buộc cho demo, P1 là nên có, P2 là bonus.
       options:
         - P0
         - P1
@@ -33,7 +33,7 @@ body:
   - type: dropdown
     id: area
     attributes:
-      label: Mang cong viec
+      label: Mảng công việc
       options:
         - game
         - protocol
@@ -51,22 +51,22 @@ body:
   - type: textarea
     id: scope
     attributes:
-      label: Pham vi cong viec
-      description: Ghi ro lam gi va khong lam gi de tranh lan scope.
+      label: Phạm vi công việc
+      description: Ghi rõ làm gì và không làm gì để tránh lan scope.
       value: |
-        Lam:
-        -
+        Làm:
+        - 
 
-        Khong lam:
-        -
+        Không làm:
+        - 
     validations:
       required: true
 
   - type: textarea
     id: files
     attributes:
-      label: File hoac thu muc du kien
-      description: Liet ke file/thu muc se tao hoac sua.
+      label: File hoặc thư mục dự kiến
+      description: Liệt kê file/thư mục sẽ tạo hoặc sửa.
       placeholder: |
         - Code/src/CaroNet.Shared/Game/...
         - Code/tests/CaroNet.Shared.Tests/...
@@ -77,42 +77,42 @@ body:
     id: deliverables
     attributes:
       label: Deliverables
-      description: Ket qua cu the phai co sau task nay.
+      description: Kết quả cụ thể phải có sau task này.
       value: |
-        -
-        -
-        -
+        - 
+        - 
+        - 
     validations:
       required: true
 
   - type: textarea
     id: acceptance
     attributes:
-      label: Tieu chi hoan thanh
-      description: Checklist de leader review va keo task sang Done.
+      label: Tiêu chí hoàn thành
+      description: Checklist để leader review và kéo task sang Done.
       value: |
-        - [ ] Co branch rieng tu develop
-        - [ ] Co Pull Request link issue nay
+        - [ ] Có branch riêng từ develop
+        - [ ] Có Pull Request link issue này
         - [ ] Build pass
-        - [ ] Test hoac manual evidence pass
-        - [ ] Khong pha flow P0
-        - [ ] Cap nhat docs neu doi protocol/model
-        - [ ] Owner giai thich duoc trong van dap 3 phut
+        - [ ] Test hoặc manual evidence pass
+        - [ ] Không phá flow P0
+        - [ ] Cập nhật docs nếu đổi protocol/model
+        - [ ] Owner giải thích được trong vấn đáp 3 phút
     validations:
       required: true
 
   - type: textarea
     id: test_plan
     attributes:
-      label: Cach test hoac evidence
-      description: Ghi lenh test, manual steps, log hoac screenshot can co.
+      label: Cách test hoặc evidence
+      description: Ghi lệnh test, manual steps, log hoặc screenshot cần có.
       placeholder: |
-        Lenh:
+        Lệnh:
         dotnet test .\Code\CaroNet.slnx -c Debug -p:Platform=x64
 
         Manual:
-        1. Chay server
-        2. Mo 2 client
+        1. Chạy server
+        2. Mở 2 client
         3. ...
     validations:
       required: true
@@ -120,21 +120,21 @@ body:
   - type: textarea
     id: defense
     attributes:
-      label: Cau hoi van dap bat buoc
-      description: Owner phai tra loi duoc cac cau nay khi review.
+      label: Câu hỏi vấn đáp bắt buộc
+      description: Owner phải trả lời được các câu này khi review.
       value: |
-        1. Input va output cua phan nay la gi?
-        2. Loi thuong gap la gi va code xu ly o dau?
-        3. Neu AI co ho tro, ban da kiem chung bang cach nao?
+        1. Input và output của phần này là gì?
+        2. Lỗi thường gặp là gì và code xử lý ở đâu?
+        3. Nếu AI có hỗ trợ, bạn đã kiểm chứng bằng cách nào?
     validations:
       required: true
 
   - type: checkboxes
     id: agreement
     attributes:
-      label: Cam ket cua owner
+      label: Cam kết của owner
       options:
-        - label: Toi hieu rang task chua Done neu chua co PR/evidence.
+        - label: Tôi hiểu rằng task chưa Done nếu chưa có PR/evidence.
           required: true
-        - label: Toi hieu rang dung AI van phai tu giai thich va chiu trach nhiem.
+        - label: Tôi hiểu rằng dùng AI vẫn phải tự giải thích và chịu trách nhiệm.
           required: true
