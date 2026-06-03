@@ -1,0 +1,140 @@
+name: Task
+description: Tao task phat trien cho CaroNet
+title: "[Task]: "
+labels: ["needs-review"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Dung template nay cho moi task code, test, UI, storage, protocol, server, client hoac tai lieu ky thuat.
+        Task chi duoc tinh Done khi co PR/evidence va owner giai thich duoc phan minh lam.
+
+  - type: input
+    id: goal
+    attributes:
+      label: Muc tieu
+      description: Task nay can hoan thanh dieu gi trong mot cau?
+      placeholder: "Vi du: Them rule engine kiem tra thang 5 quan lien tiep"
+    validations:
+      required: true
+
+  - type: dropdown
+    id: priority
+    attributes:
+      label: Do uu tien
+      description: P0 la bat buoc cho demo, P1 la nen co, P2 la bonus.
+      options:
+        - P0
+        - P1
+        - P2
+    validations:
+      required: true
+
+  - type: dropdown
+    id: area
+    attributes:
+      label: Mang cong viec
+      options:
+        - game
+        - protocol
+        - server
+        - client-net
+        - ui
+        - ui-contract
+        - storage
+        - test
+        - docs
+        - integration
+    validations:
+      required: true
+
+  - type: textarea
+    id: scope
+    attributes:
+      label: Pham vi cong viec
+      description: Ghi ro lam gi va khong lam gi de tranh lan scope.
+      value: |
+        Lam:
+        -
+
+        Khong lam:
+        -
+    validations:
+      required: true
+
+  - type: textarea
+    id: files
+    attributes:
+      label: File hoac thu muc du kien
+      description: Liet ke file/thu muc se tao hoac sua.
+      placeholder: |
+        - Code/src/CaroNet.Shared/Game/...
+        - Code/tests/CaroNet.Shared.Tests/...
+    validations:
+      required: true
+
+  - type: textarea
+    id: deliverables
+    attributes:
+      label: Deliverables
+      description: Ket qua cu the phai co sau task nay.
+      value: |
+        -
+        -
+        -
+    validations:
+      required: true
+
+  - type: textarea
+    id: acceptance
+    attributes:
+      label: Tieu chi hoan thanh
+      description: Checklist de leader review va keo task sang Done.
+      value: |
+        - [ ] Co branch rieng tu develop
+        - [ ] Co Pull Request link issue nay
+        - [ ] Build pass
+        - [ ] Test hoac manual evidence pass
+        - [ ] Khong pha flow P0
+        - [ ] Cap nhat docs neu doi protocol/model
+        - [ ] Owner giai thich duoc trong van dap 3 phut
+    validations:
+      required: true
+
+  - type: textarea
+    id: test_plan
+    attributes:
+      label: Cach test hoac evidence
+      description: Ghi lenh test, manual steps, log hoac screenshot can co.
+      placeholder: |
+        Lenh:
+        dotnet test .\Code\CaroNet.slnx -c Debug -p:Platform=x64
+
+        Manual:
+        1. Chay server
+        2. Mo 2 client
+        3. ...
+    validations:
+      required: true
+
+  - type: textarea
+    id: defense
+    attributes:
+      label: Cau hoi van dap bat buoc
+      description: Owner phai tra loi duoc cac cau nay khi review.
+      value: |
+        1. Input va output cua phan nay la gi?
+        2. Loi thuong gap la gi va code xu ly o dau?
+        3. Neu AI co ho tro, ban da kiem chung bang cach nao?
+    validations:
+      required: true
+
+  - type: checkboxes
+    id: agreement
+    attributes:
+      label: Cam ket cua owner
+      options:
+        - label: Toi hieu rang task chua Done neu chua co PR/evidence.
+          required: true
+        - label: Toi hieu rang dung AI van phai tu giai thich va chiu trach nhiem.
+          required: true
