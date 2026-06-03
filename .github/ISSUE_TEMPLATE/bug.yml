@@ -1,46 +1,40 @@
 name: Bug
-description: Bao loi trong CaroNet
+description: Báo lỗi trong CaroNet
 title: "[Bug]: "
 labels: ["bug", "needs-review"]
 body:
-  - type: markdown
-    attributes:
-      value: |
-        Dung template nay de bao loi co the tai hien duoc trong CaroNet.
-        Neu loi lien quan den networking, hay dinh kem log server/client neu co.
-
   - type: textarea
     id: current
     attributes:
-      label: Hien tuong loi
-      description: Mo ta loi dang xay ra.
-      placeholder: "Vi du: Client A danh mot o nhung Client B khong nhan duoc cap nhat ban co."
+      label: Hiện tượng lỗi
+      description: Mô tả lỗi đang xảy ra.
+      placeholder: "Ví dụ: Client A đánh một ô nhưng Client B không nhận được cập nhật bàn cờ."
     validations:
       required: true
 
   - type: textarea
     id: expected
     attributes:
-      label: Ket qua mong doi
-      description: Dang ra chuong trinh phai hoat dong nhu the nao?
+      label: Kết quả mong đợi
+      description: Đáng ra chương trình phải hoạt động như thế nào?
     validations:
       required: true
 
   - type: textarea
     id: steps
     attributes:
-      label: Cac buoc tai hien
+      label: Các bước tái hiện
       value: |
-        1.
-        2.
-        3.
+        1. 
+        2. 
+        3. 
     validations:
       required: true
 
   - type: dropdown
     id: area
     attributes:
-      label: Mang nghi ngo
+      label: Mảng nghi ngờ
       options:
         - game
         - protocol
@@ -56,8 +50,8 @@ body:
   - type: textarea
     id: logs
     attributes:
-      label: Log hoac anh chup
-      description: Dan log, test output hoac keo tha anh vao issue.
+      label: Log hoặc ảnh chụp
+      description: Dán log, test output hoặc kéo thả ảnh vào issue.
       render: shell
     validations:
       required: false
@@ -65,7 +59,7 @@ body:
   - type: textarea
     id: environment
     attributes:
-      label: Moi truong
+      label: Môi trường
       value: |
         - OS:
         - .NET SDK:
@@ -73,13 +67,3 @@ body:
         - Commit:
     validations:
       required: true
-
-  - type: checkboxes
-    id: confirmation
-    attributes:
-      label: Xac nhan
-      options:
-        - label: Toi da kiem tra issue hien co de tranh bao trung loi.
-          required: true
-        - label: Toi da ghi du thong tin de nguoi khac co the tai hien loi.
-          required: true
