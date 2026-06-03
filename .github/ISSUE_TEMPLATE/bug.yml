@@ -1,0 +1,85 @@
+name: Bug
+description: Bao loi trong CaroNet
+title: "[Bug]: "
+labels: ["bug", "needs-review"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Dung template nay de bao loi co the tai hien duoc trong CaroNet.
+        Neu loi lien quan den networking, hay dinh kem log server/client neu co.
+
+  - type: textarea
+    id: current
+    attributes:
+      label: Hien tuong loi
+      description: Mo ta loi dang xay ra.
+      placeholder: "Vi du: Client A danh mot o nhung Client B khong nhan duoc cap nhat ban co."
+    validations:
+      required: true
+
+  - type: textarea
+    id: expected
+    attributes:
+      label: Ket qua mong doi
+      description: Dang ra chuong trinh phai hoat dong nhu the nao?
+    validations:
+      required: true
+
+  - type: textarea
+    id: steps
+    attributes:
+      label: Cac buoc tai hien
+      value: |
+        1.
+        2.
+        3.
+    validations:
+      required: true
+
+  - type: dropdown
+    id: area
+    attributes:
+      label: Mang nghi ngo
+      options:
+        - game
+        - protocol
+        - server
+        - client-net
+        - ui
+        - ui-contract
+        - storage
+        - unknown
+    validations:
+      required: true
+
+  - type: textarea
+    id: logs
+    attributes:
+      label: Log hoac anh chup
+      description: Dan log, test output hoac keo tha anh vao issue.
+      render: shell
+    validations:
+      required: false
+
+  - type: textarea
+    id: environment
+    attributes:
+      label: Moi truong
+      value: |
+        - OS:
+        - .NET SDK:
+        - Branch:
+        - Commit:
+    validations:
+      required: true
+
+  - type: checkboxes
+    id: confirmation
+    attributes:
+      label: Xac nhan
+      options:
+        - label: Toi da kiem tra issue hien co de tranh bao trung loi.
+          required: true
+        - label: Toi da ghi du thong tin de nguoi khac co the tai hien loi.
+          required: true
