@@ -1,0 +1,57 @@
+<?xml version="1.0" encoding="utf-8"?>
+<Page
+    x:Class="CaroNet.Client.WinUI.Views.MainMenuPage"
+    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+    xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+    mc:Ignorable="d">
+
+    <Grid Background="{ThemeResource ApplicationPageBackgroundThemeBrush}"
+          Padding="32">
+        <StackPanel Width="400"
+                    HorizontalAlignment="Center"
+                    VerticalAlignment="Center"
+                    Spacing="18">
+
+            <TextBlock Text="CaroNet"
+                       HorizontalAlignment="Center"
+                       FontSize="56"
+                       FontWeight="Bold"
+                       Foreground="{ThemeResource TextFillColorPrimaryBrush}"/>
+
+            <TextBox x:Name="PlayerNameTextBox"
+                     Header="Tên người chơi"
+                     PlaceholderText="Nhập tên người chơi"
+                     Height="70"
+                     FontSize="17"
+                     CornerRadius="12"/>
+
+            <Button x:Name="QuickPlayButton"
+                    Height="52"
+                    HorizontalAlignment="Stretch"
+                    CornerRadius="12"
+                    Click="QuickPlayButton_Click">
+                <TextBlock Text="Chơi nhanh"
+                           FontSize="17"
+                           FontWeight="SemiBold"/>
+            </Button>
+
+            <Button Height="52"
+                    HorizontalAlignment="Stretch"
+                    CornerRadius="12">
+                <TextBlock Text="Tạo phòng"
+                           FontSize="17"
+                           FontWeight="SemiBold"/>
+            </Button>
+
+            <Button Height="52"
+                    HorizontalAlignment="Stretch"
+                    CornerRadius="12">
+                <TextBlock Text="Vào phòng"
+                           FontSize="17"
+                           FontWeight="SemiBold"/>
+            </Button>
+        </StackPanel>
+    </Grid>
+</Page>
