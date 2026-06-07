@@ -20,6 +20,7 @@
 
   <ItemGroup>
     <ProjectReference Include="..\..\src\CaroNet.Shared\CaroNet.Shared.csproj" />
+    <ProjectReference Include="..\..\src\CaroNet.Storage\CaroNet.Storage.csproj" />
   </ItemGroup>
 
 </Project>
