@@ -19,7 +19,11 @@
   </ItemGroup>
 
   <ItemGroup>
+<<<<<<< HEAD
     <ProjectReference Include="..\..\src\CaroNet.Storage\CaroNet.Storage.csproj" />
+=======
+    <ProjectReference Include="..\..\src\CaroNet.Shared\CaroNet.Shared.csproj" />
+>>>>>>> origin/develop
   </ItemGroup>
 
 </Project>
