@@ -1,7 +1,9 @@
-﻿using System;
+﻿using CaroNet.Shared;
+using System;
 using System.Net.Sockets;
 using System.Threading;
 using System.Threading.Tasks;
+using CaroNet.Shared.Protocol; 
 
 namespace CaroNet.Client.WinUI.Services;
 
@@ -11,6 +13,7 @@ public sealed class SocketClientConnection : IClientConnection
     private NetworkStream? _stream;
     private CancellationTokenSource? _cts;
     private Task? _receiveLoopTask;
+    private bool _isDisconnected;
 
     public bool IsConnected => _client?.Connected == true;
 
@@ -25,17 +28,33 @@ public sealed class SocketClientConnection : IClientConnection
 
         _stream = _client.GetStream();
         _cts = new CancellationTokenSource();
+        _isDisconnected = false;
 
-        _receiveLoopTask = Task.Run(
-            () => ReceiveLoopAsync(_cts.Token),
-            CancellationToken.None);
+        _receiveLoopTask = ReceiveLoopAsync(_cts.Token);
+    }
+
+    public async Task SendAsync(MessageEnvelope message, CancellationToken cancellationToken)
+    {
+        if (_stream == null)
+            throw new InvalidOperationException("Not connected");
+
+        var bytes = ProtocolCodec.Encode(message);
+
+        await _stream.WriteAsync(bytes, 0, bytes.Length, cancellationToken);
+        await _stream.FlushAsync(cancellationToken);
     }
 
     public async Task DisconnectAsync()
     {
+        if (_isDisconnected)
+            return;
+
+        _isDisconnected = true;
+
         try
         {
             _cts?.Cancel();
+
             if (_receiveLoopTask != null)
                 await _receiveLoopTask;
         }
@@ -44,19 +63,13 @@ public sealed class SocketClientConnection : IClientConnection
         {
             _stream?.Close();
             _client?.Close();
+
+            _stream = null;
+            _client = null;
+            _cts = null;
+
             Disconnected?.Invoke(this, EventArgs.Empty);
         }
-    }
-
-    public async Task SendAsync(
-        MessageEnvelope message,
-        CancellationToken cancellationToken)
-    {
-        if (_stream == null)
-            throw new InvalidOperationException("Not connected");
-
-        var bytes = ProtocolCodec.Encode(message);
-        await _stream.WriteAsync(bytes, cancellationToken);
     }
 
     private async Task ReceiveLoopAsync(CancellationToken cancellationToken)
@@ -83,7 +96,11 @@ public sealed class SocketClientConnection : IClientConnection
         }
         finally
         {
-            Disconnected?.Invoke(this, EventArgs.Empty);
+            if (!_isDisconnected)
+            {
+                _isDisconnected = true;
+                Disconnected?.Invoke(this, EventArgs.Empty);
+            }
         }
     }
 
@@ -91,4 +108,5 @@ public sealed class SocketClientConnection : IClientConnection
     {
         await DisconnectAsync();
     }
+
 }
