@@ -22,13 +22,17 @@ public sealed partial class MainMenuPage : Page
 
     private async void CreateRoomButton_Click(object sender, RoutedEventArgs e)
     {
-        await _viewModel.CreateRoomAsync();
-        Frame.Navigate(typeof(GamePage));
+        if (await _viewModel.CreateRoomAsync())
+        {
+            Frame.Navigate(typeof(GamePage));
+        }
     }
 
     private async void JoinRoomButton_Click(object sender, RoutedEventArgs e)
     {
-        await _viewModel.JoinRoomAsync();
-        Frame.Navigate(typeof(GamePage));
+        if (await _viewModel.JoinRoomAsync())
+        {
+            Frame.Navigate(typeof(GamePage));
+        }
     }
 }

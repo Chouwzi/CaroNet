@@ -1,9 +1,11 @@
 using System.Collections.Generic;
 using System.ComponentModel;
+using System.ComponentModel.DataAnnotations;
 using System.Runtime.CompilerServices;
 using System.Threading;
 using System.Threading.Tasks;
 using CaroNet.Client.WinUI.Services;
+using CaroNet.Client.WinUI.Validation;
 
 namespace CaroNet.Client.WinUI.ViewModels;
 
@@ -42,20 +44,53 @@ public sealed class MainMenuViewModel : INotifyPropertyChanged
         private set => SetProperty(ref _connectionStatus, value);
     }
 
-    public async Task ConnectAsync()
+    public async Task<bool> ConnectAsync()
     {
-        await _gameClient.ConnectAsync(new ConnectionRequest(PlayerName, DefaultHost, DefaultPort), CancellationToken.None);
+        string? playerNameError = PlayerNameValidator.Validate(PlayerName);
+        if (playerNameError != null)
+        {
+            ConnectionStatus = playerNameError;
+            return false;
+        }
+        await _gameClient.ConnectAsync(
+            new ConnectionRequest(PlayerName, DefaultHost, DefaultPort), CancellationToken.None);
         ConnectionStatus = $"Đã connect tới server mặc định {DefaultHost}:{DefaultPort}";
+        return true;
     }
 
-    public async Task CreateRoomAsync()
+    public async Task<bool> CreateRoomAsync()
     {
+        string? playerNameError = PlayerNameValidator.Validate(PlayerName);
+
+        if (playerNameError != null)
+        {
+            ConnectionStatus = playerNameError;
+            return false;
+        }
+
         await _gameClient.CreateRoomAsync(CancellationToken.None);
+        return true;
     }
 
-    public async Task JoinRoomAsync()
+    public async Task<bool> JoinRoomAsync()
     {
+        string? playerNameError = PlayerNameValidator.Validate(PlayerName);
+        string? roomIdError = RoomIdValidator.Validate(RoomId);
+
+        if (playerNameError != null)
+        {
+            ConnectionStatus = playerNameError;
+            return false;
+        }
+
+        if (roomIdError != null)
+        {
+            ConnectionStatus = roomIdError;
+            return false;
+        }
+
         await _gameClient.JoinRoomAsync(RoomId, CancellationToken.None);
+        return true;
     }
 
     private void SetProperty<T>(ref T field, T value, [CallerMemberName] string? propertyName = null)

@@ -78,7 +78,7 @@
             <TextBlock x:Name="ConnectionStatusText"
                        Text="{Binding ConnectionStatus}"
                        HorizontalAlignment="Center"
-                       FontSize="14"
+                       FontSize="17"
                        Foreground="{ThemeResource TextFillColorSecondaryBrush}"/>
         </StackPanel>
     </Grid>
