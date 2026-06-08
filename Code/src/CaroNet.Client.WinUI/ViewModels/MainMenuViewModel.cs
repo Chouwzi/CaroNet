@@ -15,7 +15,7 @@ public sealed class MainMenuViewModel : INotifyPropertyChanged
     private readonly IGameClientService _gameClient;
     private string _connectionStatus = "Chưa kết nối";
     private string _playerName = string.Empty;
-    private string _roomId = "ROOM-001";
+    private string _roomId = string.Empty;
 
     public MainMenuViewModel(IGameClientService gameClient)
     {

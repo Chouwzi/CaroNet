@@ -9,7 +9,7 @@
 
     <Grid Background="{ThemeResource ApplicationPageBackgroundThemeBrush}"
           Padding="32">
-        <StackPanel Width="420"
+        <StackPanel Width="600"
                     HorizontalAlignment="Center"
                     VerticalAlignment="Center"
                     Spacing="18">
@@ -33,39 +33,48 @@
                     HorizontalAlignment="Stretch"
                     CornerRadius="12"
                     Click="ConnectButton_Click">
-                <TextBlock Text="Connect"
-                           FontSize="17"
-                           FontWeight="SemiBold"/>
+                    <TextBlock Text="Chơi nhanh"
+                                FontSize="17"
+                                FontWeight="SemiBold"/>
             </Button>
 
-            <TextBox x:Name="RoomIdTextBox"
-                     Header="Room ID"
-                     PlaceholderText="ROOM-001"
-                     Text="{Binding RoomId, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
-                     Height="70"
-                     FontSize="17"
-                     CornerRadius="12"/>
+            <Grid ColumnSpacing="18">
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="*"/>
+                    <ColumnDefinition Width="170"/>
+                </Grid.ColumnDefinitions>
+
+                <Button x:Name="JoinRoomButton"
+                        Height="52"
+                        HorizontalAlignment="Stretch"
+                        CornerRadius="12"
+                        Click="JoinRoomButton_Click"
+                        Grid.Column="0">
+                    <TextBlock Text="Vào phòng"
+                               FontSize="17"
+                               FontWeight="SemiBold"/>
+                </Button>
+
+                <TextBox x:Name="RoomIdTextBox"
+                         PlaceholderText="Nhập mã phòng"
+                         Text="{Binding RoomId, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
+                         Height="52"
+                         FontSize="17"
+                         CornerRadius="12"
+                         Grid.Column="1"/>
+            </Grid>
 
             <Button x:Name="CreateRoomButton"
                     Height="52"
                     HorizontalAlignment="Stretch"
                     CornerRadius="12"
-                    Click="CreateRoomButton_Click">
+                    Click="CreateRoomButton_Click"
+                    Grid.Column="0">
                 <TextBlock Text="Tạo phòng"
                            FontSize="17"
                            FontWeight="SemiBold"/>
             </Button>
-
-            <Button x:Name="JoinRoomButton"
-                    Height="52"
-                    HorizontalAlignment="Stretch"
-                    CornerRadius="12"
-                    Click="JoinRoomButton_Click">
-                <TextBlock Text="Vào phòng"
-                           FontSize="17"
-                           FontWeight="SemiBold"/>
-            </Button>
-
+            
             <TextBlock x:Name="ConnectionStatusText"
                        Text="{Binding ConnectionStatus}"
                        HorizontalAlignment="Center"
