@@ -4,7 +4,7 @@ namespace CaroNet.Shared.Protocol;
 
 public sealed class MessageEnvelope
 {
-    public MessageType Type { get; init; }
+    public required MessageType Type { get; init; }
 
     public string? RequestId { get; init; }
 
@@ -12,5 +12,5 @@ public sealed class MessageEnvelope
 
     public string? PlayerId { get; init; }
 
-    public JsonElement Payload { get; init; }
+    public JsonElement? Payload { get; init; }
 }

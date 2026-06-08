@@ -1,5 +1,4 @@
 using System.Buffers.Binary;
-using System.Text;
 using System.Text.Json;
 
 namespace CaroNet.Shared.Protocol;
@@ -8,11 +7,8 @@ public static class ProtocolFrameCodec
 {
     public static byte[] Encode(MessageEnvelope envelope)
     {
-        string json =
-            JsonSerializer.Serialize(envelope);
-
         byte[] payloadBytes =
-            Encoding.UTF8.GetBytes(json);
+            JsonSerializer.SerializeToUtf8Bytes(envelope);
 
         byte[] frame =
             new byte[4 + payloadBytes.Length];
@@ -27,19 +23,41 @@ public static class ProtocolFrameCodec
     }
 
     public static MessageEnvelope Decode(
-        ReadOnlySpan<byte> payload)
+        ReadOnlySpan<byte> frame)
     {
-        string json =
-            Encoding.UTF8.GetString(payload);
+        if (frame.Length < 4)
+        {
+            throw new InvalidOperationException(
+                "Frame is too short.");
+        }
+
+        int payloadLength =
+            BinaryPrimitives.ReadInt32BigEndian(
+                frame[..4]);
+
+        if (payloadLength != frame.Length - 4)
+        {
+            throw new InvalidOperationException(
+                "Frame length mismatch.");
+        }
+
+        ReadOnlySpan<byte> payload =
+            frame[4..];
 
         MessageEnvelope? envelope =
             JsonSerializer.Deserialize<MessageEnvelope>(
-                json);
+                payload);
 
         if (envelope is null)
         {
             throw new InvalidOperationException(
                 "Invalid message.");
+        }
+
+        if (!Enum.IsDefined(envelope.Type))
+        {
+            throw new InvalidOperationException(
+                $"Unsupported message type: {envelope.Type}");
         }
 
         return envelope;
