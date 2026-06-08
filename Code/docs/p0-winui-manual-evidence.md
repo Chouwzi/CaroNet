@@ -13,9 +13,9 @@ dotnet test .\Code\CaroNet.slnx -c Debug -p:Platform=x64
 
 1. Run the server host.
 2. Open two WinUI clients in Visual Studio x64.
-3. Client A enters player name, host and port, then clicks Connect.
+3. Client A enters player name, then clicks Connect.
 4. Client A clicks Create Room and records the room id.
-5. Client B enters player name, host and port, then clicks Connect.
+5. Client B enters player name, then clicks Connect.
 6. Client B enters the room id and clicks Join Room.
 7. Client A clicks one board cell.
 8. Verify both clients render the same X/O after server state broadcast.

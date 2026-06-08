@@ -163,7 +163,7 @@
             <!-- ================= RIGHT SIDE ================= -->
             <Grid Grid.Row="1"
                   Grid.Column="1"
-                  RowDefinitions="Auto,*"
+                  RowDefinitions="220,*,76"
                   RowSpacing="16">
 
                 <!-- ========== INFO BLOCK ========== -->
@@ -232,7 +232,7 @@
                     </StackPanel>
                 </Border>
 
-                <!-- ========== STATUS BLOCK ========== -->
+                <!-- ========== CHAT BLOCK ========== -->
                 <Border Grid.Row="1"
                         Background="{ThemeResource CardBackgroundFillColorDefaultBrush}"
                         BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}"
@@ -241,7 +241,7 @@
                         Padding="20">
 
                     <StackPanel Spacing="12">
-                        <TextBlock Text="Server Status"
+                        <TextBlock Text="Chat"
                                    Foreground="{ThemeResource TextFillColorPrimaryBrush}"
                                    FontSize="21"
                                    FontWeight="SemiBold"/>
@@ -256,6 +256,34 @@
                                    FontSize="14"
                                    TextWrapping="Wrap"/>
                     </StackPanel>
+                </Border>
+
+                <!-- ========== CHAT INPUT BLOCK ========== -->
+                <Border Grid.Row="2"
+                        Background="{ThemeResource CardBackgroundFillColorDefaultBrush}"
+                        BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}"
+                        BorderThickness="1"
+                        CornerRadius="22"
+                        Padding="12">
+
+                    <Grid ColumnDefinitions="*,52"
+                          ColumnSpacing="10">
+
+                        <TextBox Grid.Column="0"
+                                 PlaceholderText="Nhập chat..."
+                                 FontSize="15"
+                                 BorderBrush="{ThemeResource ControlStrokeColorDefaultBrush}"
+                                 BorderThickness="1"
+                                 CornerRadius="14"
+                                 Padding="14,8"/>
+
+                        <Button Grid.Column="1"
+                                Content="➜"
+                                FontSize="20"
+                                FontWeight="SemiBold"
+                                CornerRadius="14"/>
+
+                    </Grid>
                 </Border>
 
             </Grid>

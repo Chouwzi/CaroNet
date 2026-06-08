@@ -9,11 +9,12 @@ namespace CaroNet.Client.WinUI.ViewModels;
 
 public sealed class MainMenuViewModel : INotifyPropertyChanged
 {
+    private const string DefaultHost = "127.0.0.1";
+    private const int DefaultPort = 5000;
+
     private readonly IGameClientService _gameClient;
     private string _connectionStatus = "Chưa kết nối";
-    private string _host = "127.0.0.1";
     private string _playerName = string.Empty;
-    private string _port = "5000";
     private string _roomId = "ROOM-001";
 
     public MainMenuViewModel(IGameClientService gameClient)
@@ -27,18 +28,6 @@ public sealed class MainMenuViewModel : INotifyPropertyChanged
     {
         get => _playerName;
         set => SetProperty(ref _playerName, value);
-    }
-
-    public string Host
-    {
-        get => _host;
-        set => SetProperty(ref _host, value);
-    }
-
-    public string Port
-    {
-        get => _port;
-        set => SetProperty(ref _port, value);
     }
 
     public string RoomId
@@ -55,14 +44,8 @@ public sealed class MainMenuViewModel : INotifyPropertyChanged
 
     public async Task ConnectAsync()
     {
-        if (!int.TryParse(Port, out var port))
-        {
-            ConnectionStatus = "Port server không hợp lệ.";
-            return;
-        }
-
-        await _gameClient.ConnectAsync(new ConnectionRequest(PlayerName, Host, port), CancellationToken.None);
-        ConnectionStatus = $"Đã connect tới {Host}:{port}";
+        await _gameClient.ConnectAsync(new ConnectionRequest(PlayerName, DefaultHost, DefaultPort), CancellationToken.None);
+        ConnectionStatus = $"Đã connect tới server mặc định {DefaultHost}:{DefaultPort}";
     }
 
     public async Task CreateRoomAsync()

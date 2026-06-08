@@ -28,22 +28,6 @@
                      FontSize="17"
                      CornerRadius="12"/>
 
-            <TextBox x:Name="ServerHostTextBox"
-                     Header="Host server"
-                     PlaceholderText="127.0.0.1"
-                     Text="{Binding Host, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
-                     Height="70"
-                     FontSize="17"
-                     CornerRadius="12"/>
-
-            <TextBox x:Name="ServerPortTextBox"
-                     Header="Port server"
-                     PlaceholderText="5000"
-                     Text="{Binding Port, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
-                     Height="70"
-                     FontSize="17"
-                     CornerRadius="12"/>
-
             <Button x:Name="ConnectButton"
                     Height="52"
                     HorizontalAlignment="Stretch"
