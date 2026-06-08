@@ -44,7 +44,7 @@ public static class CaroRuleEngine
                 cNeg -= dCol;
             }
 
-            if (totalConsecutive == 5)
+            if (totalConsecutive >= 5)
             {
                 return true;
             }
