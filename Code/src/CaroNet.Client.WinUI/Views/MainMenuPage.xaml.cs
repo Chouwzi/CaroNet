@@ -10,7 +10,17 @@ public sealed partial class MainMenuPage : Page
         InitializeComponent();
     }
 
-    private void QuickPlayButton_Click(object sender, RoutedEventArgs e)
+    private void ConnectButton_Click(object sender, RoutedEventArgs e)
+    {
+        ConnectionStatusText.Text = $"Đã nhập {ServerHostTextBox.Text}:{ServerPortTextBox.Text}";
+    }
+
+    private void CreateRoomButton_Click(object sender, RoutedEventArgs e)
+    {
+        Frame.Navigate(typeof(GamePage));
+    }
+
+    private void JoinRoomButton_Click(object sender, RoutedEventArgs e)
     {
         Frame.Navigate(typeof(GamePage));
     }

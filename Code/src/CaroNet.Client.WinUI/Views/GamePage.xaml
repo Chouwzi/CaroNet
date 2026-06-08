@@ -32,7 +32,7 @@
           Padding="10">
 
         <Grid RowDefinitions="92,*"
-              ColumnDefinitions="*,400"
+              ColumnDefinitions="*,360"
               RowSpacing="10"
               ColumnSpacing="10">
 
@@ -163,7 +163,7 @@
             <!-- ================= RIGHT SIDE ================= -->
             <Grid Grid.Row="1"
                   Grid.Column="1"
-                  RowDefinitions="220,*,76"
+                  RowDefinitions="Auto,*"
                   RowSpacing="16">
 
                 <!-- ========== INFO BLOCK ========== -->
@@ -232,7 +232,7 @@
                     </StackPanel>
                 </Border>
 
-                <!-- ========== CHAT BLOCK ========== -->
+                <!-- ========== STATUS BLOCK ========== -->
                 <Border Grid.Row="1"
                         Background="{ThemeResource CardBackgroundFillColorDefaultBrush}"
                         BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}"
@@ -240,57 +240,22 @@
                         CornerRadius="22"
                         Padding="20">
 
-                    <Grid RowDefinitions="Auto,*"
-                          RowSpacing="16">
+                    <StackPanel Spacing="12">
+                        <TextBlock Text="Server Status"
+                                   Foreground="{ThemeResource TextFillColorPrimaryBrush}"
+                                   FontSize="21"
+                                   FontWeight="SemiBold"/>
 
-                        <StackPanel Grid.Row="0"
-                                    Spacing="4">
+                        <TextBlock Text="{Binding ConnectionStatus}"
+                                   Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                                   FontSize="14"
+                                   TextWrapping="Wrap"/>
 
-                            <TextBlock Text="Chat"
-                                       Foreground="{ThemeResource TextFillColorPrimaryBrush}"
-                                       FontSize="21"
-                                       FontWeight="SemiBold"/>
-                        </StackPanel>
-
-                        <ScrollViewer x:Name="ChatScrollViewer"
-                                      Grid.Row="1"
-                                      VerticalScrollBarVisibility="Auto">
-
-                            <StackPanel x:Name="ChatMessagesPanel"
-                                        Spacing="10"/>
-                        </ScrollViewer>
-
-                    </Grid>
-                </Border>
-
-                <!-- ========== CHAT INPUT BLOCK ========== -->
-                <Border Grid.Row="2"
-                        Background="{ThemeResource CardBackgroundFillColorDefaultBrush}"
-                        BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}"
-                        BorderThickness="1"
-                        CornerRadius="22"
-                        Padding="12">
-
-                    <Grid ColumnDefinitions="*,52"
-                          ColumnSpacing="10">
-
-                        <TextBox x:Name="ChatMessageTextBox"
-                                 Grid.Column="0"
-                                 PlaceholderText="Nhập chat..."
-                                 FontSize="15"
-                                 BorderBrush="{ThemeResource ControlStrokeColorDefaultBrush}"
-                                 BorderThickness="1"
-                                 CornerRadius="14"
-                                 Padding="14,8"/>
-
-                        <Button Grid.Column="1"
-                                Content="➜"
-                                FontSize="20"
-                                FontWeight="SemiBold"
-                                CornerRadius="14"
-                                Click="SendChatButton_Click"/>
-
-                    </Grid>
+                        <TextBlock Text="{Binding ServerError}"
+                                   Foreground="{ThemeResource SystemFillColorCriticalBrush}"
+                                   FontSize="14"
+                                   TextWrapping="Wrap"/>
+                    </StackPanel>
                 </Border>
 
             </Grid>

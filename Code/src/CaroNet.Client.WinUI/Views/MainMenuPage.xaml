@@ -9,7 +9,7 @@
 
     <Grid Background="{ThemeResource ApplicationPageBackgroundThemeBrush}"
           Padding="32">
-        <StackPanel Width="400"
+        <StackPanel Width="420"
                     HorizontalAlignment="Center"
                     VerticalAlignment="Center"
                     Spacing="18">
@@ -27,31 +27,57 @@
                      FontSize="17"
                      CornerRadius="12"/>
 
-            <Button x:Name="QuickPlayButton"
+            <TextBox x:Name="ServerHostTextBox"
+                     Header="Host server"
+                     PlaceholderText="127.0.0.1"
+                     Text="127.0.0.1"
+                     Height="70"
+                     FontSize="17"
+                     CornerRadius="12"/>
+
+            <TextBox x:Name="ServerPortTextBox"
+                     Header="Port server"
+                     PlaceholderText="5000"
+                     Text="5000"
+                     Height="70"
+                     FontSize="17"
+                     CornerRadius="12"/>
+
+            <Button x:Name="ConnectButton"
                     Height="52"
                     HorizontalAlignment="Stretch"
                     CornerRadius="12"
-                    Click="QuickPlayButton_Click">
-                <TextBlock Text="Chơi nhanh"
+                    Click="ConnectButton_Click">
+                <TextBlock Text="Connect"
                            FontSize="17"
                            FontWeight="SemiBold"/>
             </Button>
 
-            <Button Height="52"
+            <Button x:Name="CreateRoomButton"
+                    Height="52"
                     HorizontalAlignment="Stretch"
-                    CornerRadius="12">
+                    CornerRadius="12"
+                    Click="CreateRoomButton_Click">
                 <TextBlock Text="Tạo phòng"
                            FontSize="17"
                            FontWeight="SemiBold"/>
             </Button>
 
-            <Button Height="52"
+            <Button x:Name="JoinRoomButton"
+                    Height="52"
                     HorizontalAlignment="Stretch"
-                    CornerRadius="12">
+                    CornerRadius="12"
+                    Click="JoinRoomButton_Click">
                 <TextBlock Text="Vào phòng"
                            FontSize="17"
                            FontWeight="SemiBold"/>
             </Button>
+
+            <TextBlock x:Name="ConnectionStatusText"
+                       Text="Chưa kết nối"
+                       HorizontalAlignment="Center"
+                       FontSize="14"
+                       Foreground="{ThemeResource TextFillColorSecondaryBrush}"/>
         </StackPanel>
     </Grid>
 </Page>

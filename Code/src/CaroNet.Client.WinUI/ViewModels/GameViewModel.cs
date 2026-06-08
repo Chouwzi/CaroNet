@@ -22,9 +22,6 @@ public sealed class GameViewModel : INotifyPropertyChanged
             }
         }
 
-        ChatMessages.Add(new ChatMessageViewModel(PlayerBName, "Bạn đi trước đi.", false));
-        ChatMessages.Add(new ChatMessageViewModel(PlayerAName, "Ok, mình đánh giữa bàn nhé.", true));
-        ChatMessages.Add(new ChatMessageViewModel(PlayerBName, "Cẩn thận, mình đang chặn rồi đó.", false));
     }
 
     public event PropertyChangedEventHandler? PropertyChanged;
@@ -47,7 +44,9 @@ public sealed class GameViewModel : INotifyPropertyChanged
 
     public ObservableCollection<BoardCellViewModel> BoardCells { get; } = [];
 
-    public ObservableCollection<ChatMessageViewModel> ChatMessages { get; } = [];
+    public string ConnectionStatus { get; } = "Chưa kết nối server";
+
+    public string ServerError { get; } = string.Empty;
 
     public string CurrentTurnName
     {
@@ -66,16 +65,6 @@ public sealed class GameViewModel : INotifyPropertyChanged
         cell.Mark = _currentMark;
         _currentMark = _currentMark == "X" ? "O" : "X";
         CurrentTurnName = _currentMark == "X" ? PlayerAName : PlayerBName;
-    }
-
-    public void AddMyChatMessage(string text)
-    {
-        if (string.IsNullOrWhiteSpace(text))
-        {
-            return;
-        }
-
-        ChatMessages.Add(new ChatMessageViewModel(PlayerAName, text.Trim(), true));
     }
 
     private void SetProperty<T>(ref T field, T value, [CallerMemberName] string? propertyName = null)
@@ -121,5 +110,3 @@ public sealed class BoardCellViewModel : INotifyPropertyChanged
         }
     }
 }
-
-public sealed record ChatMessageViewModel(string SenderName, string Text, bool IsMine);
