@@ -23,6 +23,7 @@
             <TextBox x:Name="PlayerNameTextBox"
                      Header="Tên người chơi"
                      PlaceholderText="Nhập tên người chơi"
+                     Text="{Binding PlayerName, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
                      Height="70"
                      FontSize="17"
                      CornerRadius="12"/>
@@ -30,7 +31,7 @@
             <TextBox x:Name="ServerHostTextBox"
                      Header="Host server"
                      PlaceholderText="127.0.0.1"
-                     Text="127.0.0.1"
+                     Text="{Binding Host, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
                      Height="70"
                      FontSize="17"
                      CornerRadius="12"/>
@@ -38,7 +39,7 @@
             <TextBox x:Name="ServerPortTextBox"
                      Header="Port server"
                      PlaceholderText="5000"
-                     Text="5000"
+                     Text="{Binding Port, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
                      Height="70"
                      FontSize="17"
                      CornerRadius="12"/>
@@ -56,7 +57,7 @@
             <TextBox x:Name="RoomIdTextBox"
                      Header="Room ID"
                      PlaceholderText="ROOM-001"
-                     Text="ROOM-001"
+                     Text="{Binding RoomId, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
                      Height="70"
                      FontSize="17"
                      CornerRadius="12"/>
@@ -82,7 +83,7 @@
             </Button>
 
             <TextBlock x:Name="ConnectionStatusText"
-                       Text="Chưa kết nối"
+                       Text="{Binding ConnectionStatus}"
                        HorizontalAlignment="Center"
                        FontSize="14"
                        Foreground="{ThemeResource TextFillColorSecondaryBrush}"/>
