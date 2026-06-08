@@ -53,6 +53,14 @@
                            FontWeight="SemiBold"/>
             </Button>
 
+            <TextBox x:Name="RoomIdTextBox"
+                     Header="Room ID"
+                     PlaceholderText="ROOM-001"
+                     Text="ROOM-001"
+                     Height="70"
+                     FontSize="17"
+                     CornerRadius="12"/>
+
             <Button x:Name="CreateRoomButton"
                     Height="52"
                     HorizontalAlignment="Stretch"

@@ -2,6 +2,10 @@ using System.Collections.Generic;
 using System.Collections.ObjectModel;
 using System.ComponentModel;
 using System.Runtime.CompilerServices;
+using System.Threading;
+using System.Threading.Tasks;
+using CaroNet.Client.WinUI.Services;
+using CaroNet.Shared.Game;
 
 namespace CaroNet.Client.WinUI.ViewModels;
 
@@ -9,11 +13,19 @@ public sealed class GameViewModel : INotifyPropertyChanged
 {
     public const int BoardSize = 15;
 
-    private string _currentMark = "X";
-    private string _currentTurnName = "Username A";
+    private readonly IGameClientService _gameClient;
+    private string _connectionStatus = "Chưa kết nối server";
+    private string _currentTurnSymbol = "X";
+    private string _playerName = "Player";
+    private string _playerSymbol = "?";
+    private string _roomId = string.Empty;
+    private string _serverError = string.Empty;
 
-    public GameViewModel()
+    public GameViewModel(IGameClientService gameClient)
     {
+        _gameClient = gameClient;
+        _gameClient.GameStateUpdated += GameClient_GameStateUpdated;
+
         for (var row = 0; row < BoardSize; row++)
         {
             for (var column = 0; column < BoardSize; column++)
@@ -21,50 +33,71 @@ public sealed class GameViewModel : INotifyPropertyChanged
                 BoardCells.Add(new BoardCellViewModel(row, column));
             }
         }
-
     }
 
     public event PropertyChangedEventHandler? PropertyChanged;
 
-    public string PlayerAName { get; } = "Username A";
-
-    public string PlayerBName { get; } = "Username B";
-
-    public int PlayerAScore { get; } = 0;
-
-    public int PlayerBScore { get; } = 1;
-
-    public string PlayerATimerText { get; } = "00:30";
-
-    public string PlayerBTimerText { get; } = "00:30";
-
-    public int TotalGames { get; } = 160;
-
-    public string WinLoseRatio { get; } = "1 / 3";
-
     public ObservableCollection<BoardCellViewModel> BoardCells { get; } = [];
 
-    public string ConnectionStatus { get; } = "Chưa kết nối server";
-
-    public string ServerError { get; } = string.Empty;
-
-    public string CurrentTurnName
+    public string RoomId
     {
-        get => _currentTurnName;
-        private set => SetProperty(ref _currentTurnName, value);
+        get => _roomId;
+        private set => SetProperty(ref _roomId, value);
     }
 
-    public void PlaceMark(int row, int column)
+    public string PlayerName
     {
-        var cell = BoardCells[row * BoardSize + column];
-        if (!string.IsNullOrEmpty(cell.Mark))
-        {
-            return;
-        }
+        get => _playerName;
+        private set => SetProperty(ref _playerName, value);
+    }
 
-        cell.Mark = _currentMark;
-        _currentMark = _currentMark == "X" ? "O" : "X";
-        CurrentTurnName = _currentMark == "X" ? PlayerAName : PlayerBName;
+    public string PlayerSymbol
+    {
+        get => _playerSymbol;
+        private set => SetProperty(ref _playerSymbol, value);
+    }
+
+    public string CurrentTurnSymbol
+    {
+        get => _currentTurnSymbol;
+        private set => SetProperty(ref _currentTurnSymbol, value);
+    }
+
+    public string ConnectionStatus
+    {
+        get => _connectionStatus;
+        private set => SetProperty(ref _connectionStatus, value);
+    }
+
+    public string ServerError
+    {
+        get => _serverError;
+        private set => SetProperty(ref _serverError, value);
+    }
+
+    public async Task MakeMoveAsync(int row, int column)
+    {
+        await _gameClient.MakeMoveAsync(new BoardPosition(row, column), CancellationToken.None);
+    }
+
+    private void GameClient_GameStateUpdated(object? sender, GameViewState state)
+    {
+        ApplyState(state);
+    }
+
+    private void ApplyState(GameViewState state)
+    {
+        RoomId = state.RoomId;
+        PlayerName = state.PlayerName;
+        PlayerSymbol = state.PlayerSymbol;
+        CurrentTurnSymbol = state.CurrentTurnSymbol;
+        ConnectionStatus = state.ConnectionStatus;
+        ServerError = state.ServerError;
+
+        foreach (var cellState in state.Cells)
+        {
+            BoardCells[cellState.Row * BoardSize + cellState.Column].Mark = cellState.Mark;
+        }
     }
 
     private void SetProperty<T>(ref T field, T value, [CallerMemberName] string? propertyName = null)

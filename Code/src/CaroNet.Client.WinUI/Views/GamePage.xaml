@@ -53,17 +53,17 @@
                                 VerticalAlignment="Center"
                                 Spacing="2">
 
-                        <TextBlock Text="PLAYER A"
+                        <TextBlock Text="PLAYER"
                                    Foreground="{ThemeResource TextFillColorSecondaryBrush}"
                                    FontSize="12"
                                    FontWeight="SemiBold"/>
 
-                        <TextBlock Text="{Binding PlayerAName}"
+                        <TextBlock Text="{Binding PlayerName}"
                                    Foreground="{ThemeResource TextFillColorPrimaryBrush}"
                                    FontSize="20"
                                    FontWeight="SemiBold"/>
 
-                        <TextBlock Text="{Binding PlayerATimerText}"
+                        <TextBlock Text="{Binding ConnectionStatus}"
                                    Foreground="{ThemeResource TextFillColorSecondaryBrush}"
                                    FontSize="14"
                                    FontWeight="SemiBold"/>
@@ -76,17 +76,17 @@
                                 VerticalAlignment="Center"
                                 Spacing="18">
 
-                        <TextBlock Text="{Binding PlayerAScore}"
+                        <TextBlock Text="{Binding PlayerSymbol}"
                                    Foreground="{ThemeResource TextFillColorPrimaryBrush}"
                                    FontSize="30"
                                    FontWeight="Bold"/>
 
-                        <TextBlock Text="-"
+                        <TextBlock Text="/"
                                    Foreground="{ThemeResource TextFillColorSecondaryBrush}"
                                    FontSize="26"
                                    FontWeight="SemiBold"/>
 
-                        <TextBlock Text="{Binding PlayerBScore}"
+                        <TextBlock Text="{Binding CurrentTurnSymbol}"
                                    Foreground="{ThemeResource TextFillColorPrimaryBrush}"
                                    FontSize="30"
                                    FontWeight="Bold"/>
@@ -98,18 +98,18 @@
                                 HorizontalAlignment="Right"
                                 Spacing="2">
 
-                        <TextBlock Text="PLAYER B"
+                        <TextBlock Text="ROOM"
                                    Foreground="{ThemeResource TextFillColorSecondaryBrush}"
                                    FontSize="12"
                                    FontWeight="SemiBold"
                                    HorizontalAlignment="Right"/>
 
-                        <TextBlock Text="{Binding PlayerBName}"
+                        <TextBlock Text="{Binding RoomId}"
                                    Foreground="{ThemeResource TextFillColorPrimaryBrush}"
                                    FontSize="20"
                                    FontWeight="SemiBold"/>
 
-                        <TextBlock Text="{Binding PlayerBTimerText}"
+                        <TextBlock Text="Server authoritative"
                                    Foreground="{ThemeResource TextFillColorSecondaryBrush}"
                                    FontSize="14"
                                    FontWeight="SemiBold"
@@ -189,12 +189,12 @@
                             <Grid Grid.Row="0"
                                   ColumnDefinitions="*,Auto">
 
-                                <TextBlock Text="Total games"
+                                <TextBlock Text="Your symbol"
                                            Foreground="{ThemeResource TextFillColorSecondaryBrush}"
                                            FontSize="14"/>
 
                                 <TextBlock Grid.Column="1"
-                                           Text="{Binding TotalGames}"
+                                           Text="{Binding PlayerSymbol}"
                                            Foreground="{ThemeResource TextFillColorPrimaryBrush}"
                                            FontSize="14"
                                            FontWeight="SemiBold"/>
@@ -203,12 +203,12 @@
                             <Grid Grid.Row="1"
                                   ColumnDefinitions="*,Auto">
 
-                                <TextBlock Text="Win / Lose ratio"
+                                <TextBlock Text="Room"
                                            Foreground="{ThemeResource TextFillColorSecondaryBrush}"
                                            FontSize="14"/>
 
                                 <TextBlock Grid.Column="1"
-                                           Text="{Binding WinLoseRatio}"
+                                           Text="{Binding RoomId}"
                                            Foreground="{ThemeResource TextFillColorPrimaryBrush}"
                                            FontSize="14"
                                            FontWeight="SemiBold"/>
@@ -222,7 +222,7 @@
                                            FontSize="14"/>
 
                                 <TextBlock Grid.Column="1"
-                                           Text="{Binding CurrentTurnName}"
+                                           Text="{Binding CurrentTurnSymbol}"
                                            Foreground="{ThemeResource TextFillColorPrimaryBrush}"
                                            FontSize="14"
                                            FontWeight="SemiBold"/>

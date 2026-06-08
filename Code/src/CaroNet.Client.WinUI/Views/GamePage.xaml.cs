@@ -1,3 +1,4 @@
+using CaroNet.Client.WinUI.Services;
 using CaroNet.Client.WinUI.ViewModels;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
@@ -7,7 +8,7 @@ namespace CaroNet.Client.WinUI.Views;
 
 public sealed partial class GamePage : Page
 {
-    private readonly GameViewModel _viewModel = new();
+    private readonly GameViewModel _viewModel = new(AppServices.GameClient);
 
     public GamePage()
     {
@@ -45,12 +46,11 @@ public sealed partial class GamePage : Page
         }
     }
 
-    private void BoardCellButton_Click(object sender, RoutedEventArgs e)
+    private async void BoardCellButton_Click(object sender, RoutedEventArgs e)
     {
         if (sender is Button { DataContext: BoardCellViewModel cell })
         {
-            _viewModel.PlaceMark(cell.Row, cell.Column);
+            await _viewModel.MakeMoveAsync(cell.Row, cell.Column);
         }
     }
-
 }
