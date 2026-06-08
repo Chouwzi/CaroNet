@@ -164,7 +164,7 @@ public class CaroGameTests
     }
 
     [Fact]
-    public void CheckWin_MoreThanFiveSymbols_ShouldNotWin()
+    public void CheckWin_MoreThanFiveSymbols_ShouldTrigger_XWon()
     {
         var game = CreateStandardGame();
 
@@ -184,8 +184,8 @@ public class CaroGameTests
             Assert.True(result.IsSuccess, $"Nước đi thứ {i} tại ({moves[i, 0]}, {moves[i, 1]}) bị thất bại với lý do: {result.Reason}");
         }
 
-        Assert.Equal(GameStatus.Playing, result.Status);
-        Assert.Equal(GameStatus.Playing, game.Status);
+        Assert.Equal(GameStatus.XWon, result.Status);
+        Assert.Equal(GameStatus.XWon, game.Status);
     }
 
     [Fact]
