@@ -59,7 +59,7 @@ public class ProtocolFrameCodecTests
         string json =
             """
             {
-                "Type": 999
+                "type": "UnknownMessage"
             }
             """;
 
@@ -93,7 +93,6 @@ public class ProtocolFrameCodecTests
         byte[] frame =
             ProtocolFrameCodec.Encode(message);
 
-        // Cố tình làm sai length prefix
         frame[3]++;
 
         Assert.Throws<InvalidOperationException>(
@@ -104,6 +103,39 @@ public class ProtocolFrameCodecTests
     public void Decode_Should_Reject_Frame_Too_Short()
     {
         byte[] frame = [1, 2, 3];
+
+        Assert.Throws<InvalidOperationException>(
+            () => ProtocolFrameCodec.Decode(frame));
+    }
+
+    [Fact]
+    public void MessageEnvelope_Should_Use_Protocol_Field_Names()
+    {
+        var envelope = new MessageEnvelope
+        {
+            Type = MessageType.Hello
+        };
+
+        string json =
+            JsonSerializer.Serialize(envelope);
+
+        Assert.Contains("\"type\"", json);
+
+        Assert.DoesNotContain("\"Type\"", json);
+        Assert.DoesNotContain("\"RequestId\"", json);
+        Assert.DoesNotContain("\"RoomId\"", json);
+        Assert.DoesNotContain("\"PlayerId\"", json);
+        Assert.DoesNotContain("\"Payload\"", json);
+    }
+
+    [Fact]
+    public void Decode_Should_Reject_Oversized_Frame()
+    {
+        byte[] frame = new byte[4];
+
+        BinaryPrimitives.WriteInt32BigEndian(
+            frame,
+            1024 * 1024 + 1);
 
         Assert.Throws<InvalidOperationException>(
             () => ProtocolFrameCodec.Decode(frame));

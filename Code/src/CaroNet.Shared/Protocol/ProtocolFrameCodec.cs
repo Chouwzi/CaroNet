@@ -5,10 +5,18 @@ namespace CaroNet.Shared.Protocol;
 
 public static class ProtocolFrameCodec
 {
+    private const int MaxPayloadLength = 1024 * 1024; // 1 MB
+
     public static byte[] Encode(MessageEnvelope envelope)
     {
         byte[] payloadBytes =
             JsonSerializer.SerializeToUtf8Bytes(envelope);
+
+        if (payloadBytes.Length > MaxPayloadLength)
+        {
+            throw new InvalidOperationException(
+                $"Payload exceeds maximum size of {MaxPayloadLength} bytes.");
+        }
 
         byte[] frame =
             new byte[4 + payloadBytes.Length];
@@ -35,6 +43,12 @@ public static class ProtocolFrameCodec
             BinaryPrimitives.ReadInt32BigEndian(
                 frame[..4]);
 
+        if (payloadLength > MaxPayloadLength)
+        {
+            throw new InvalidOperationException(
+                $"Payload exceeds maximum size of {MaxPayloadLength} bytes.");
+        }
+
         if (payloadLength != frame.Length - 4)
         {
             throw new InvalidOperationException(
@@ -44,9 +58,20 @@ public static class ProtocolFrameCodec
         ReadOnlySpan<byte> payload =
             frame[4..];
 
-        MessageEnvelope? envelope =
-            JsonSerializer.Deserialize<MessageEnvelope>(
-                payload);
+        MessageEnvelope? envelope;
+
+        try
+        {
+            envelope =
+                JsonSerializer.Deserialize<MessageEnvelope>(
+                    payload);
+        }
+        catch (JsonException ex)
+        {
+            throw new InvalidOperationException(
+                "Malformed protocol message.",
+                ex);
+        }
 
         if (envelope is null)
         {
