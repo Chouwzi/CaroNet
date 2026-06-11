@@ -1,6 +1,5 @@
-﻿namespace CaroNet.Storage;
+﻿namespace CaroNet.Storage.Matches;
 
-using CaroNet.Storage;
 public sealed class MatchMoveRecord
 {
     public int MoveNumber { get; init; }

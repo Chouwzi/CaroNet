@@ -1,6 +1,5 @@
-namespace CaroNet.Storage;
+namespace CaroNet.Storage.Matches;
 
-using CaroNet.Storage;
 public interface IMatchHistoryStore
 {
     Task SaveMatchAsync(

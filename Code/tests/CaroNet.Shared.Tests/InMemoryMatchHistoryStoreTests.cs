@@ -1,4 +1,4 @@
-﻿using CaroNet.Storage;
+﻿using CaroNet.Storage.Matches;
 
 namespace CaroNet.Shared.Tests;
 
@@ -46,10 +46,15 @@ public class InMemoryMatchHistoryStoreTests
         var loaded = await store.GetMatchAsync(matchId);
 
         Assert.NotNull(loaded);
+
         Assert.Equal("ROOM-1", loaded!.RoomId);
         Assert.Equal("Alice", loaded.PlayerX);
         Assert.Equal("Bob", loaded.PlayerO);
         Assert.Equal("Alice", loaded.Winner);
+
         Assert.Equal(2, loaded.Moves.Count);
+
+        Assert.Equal(7, loaded.Moves[0].Row);
+        Assert.Equal(8, loaded.Moves[1].Column);
     }
 }

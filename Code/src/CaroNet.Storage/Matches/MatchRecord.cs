@@ -1,6 +1,5 @@
-﻿namespace CaroNet.Storage;
+﻿namespace CaroNet.Storage.Matches;
 
-using CaroNet.Storage;
 public sealed class MatchRecord
 {
     public Guid MatchId { get; init; }
@@ -17,6 +16,5 @@ public sealed class MatchRecord
 
     public DateTime EndedAtUtc { get; init; }
 
-    public IReadOnlyList<MatchMoveRecord> Moves { get; init; }
-        = Array.Empty<MatchMoveRecord>();
+    public List<MatchMoveRecord> Moves { get; init; } = new();
 }

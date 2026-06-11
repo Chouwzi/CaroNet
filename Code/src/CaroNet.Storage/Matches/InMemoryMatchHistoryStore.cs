@@ -1,6 +1,6 @@
 ﻿using System.Collections.Concurrent;
-using CaroNet.Storage;
-namespace CaroNet.Storage;
+
+namespace CaroNet.Storage.Matches;
 
 public sealed class InMemoryMatchHistoryStore
     : IMatchHistoryStore
