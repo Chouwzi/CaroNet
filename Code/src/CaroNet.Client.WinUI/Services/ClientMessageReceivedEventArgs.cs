@@ -1,5 +1,5 @@
-using CaroNet.Shared;
 using System;
+using CaroNet.Shared.Protocol;
 
 namespace CaroNet.Client.WinUI.Services;
 
