@@ -15,6 +15,7 @@ public sealed partial class MainWindow : Window
     {
         InitializeComponent();
 
+
         this.Activated += MainWindow_Activated;
     }
 
@@ -58,5 +59,6 @@ public sealed partial class MainWindow : Window
         {
             Debug.WriteLine("CONNECT FAILED: " + ex.Message);
         }
+
     }
 }

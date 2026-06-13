@@ -1,4 +1,4 @@
-﻿using CaroNet.Shared;
+using CaroNet.Shared;
 using System;
 
 namespace CaroNet.Client.WinUI.Services;
