@@ -11,6 +11,6 @@ public interface IPlayerRecordStore
         CancellationToken cancellationToken = default);
 
     Task<IReadOnlyList<PlayerRecord>> GetTopPlayersAsync(
-        int count,
+        int limit,
         CancellationToken cancellationToken = default);
 }
