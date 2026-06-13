@@ -13,8 +13,6 @@
     <WinUISDKReferences>false</WinUISDKReferences>
     <EnableMsixTooling>true</EnableMsixTooling>
     <Nullable>enable</Nullable>
-    <WindowsPackageType>None</WindowsPackageType>
-    <WindowsAppSDKSelfContained>true</WindowsAppSDKSelfContained>
   </PropertyGroup>
   <ItemGroup>
     <None Remove="Views\GamePage.xaml" />
@@ -50,6 +48,7 @@
   </ItemGroup>
   <ItemGroup>
     <ProjectReference Include="..\CaroNet.Shared\CaroNet.Shared.csproj" />
+    <ProjectReference Include="..\CaroNet.Storage\CaroNet.Storage.csproj" />
   </ItemGroup>
   <ItemGroup>
     <Page Update="Views\GamePage.xaml">

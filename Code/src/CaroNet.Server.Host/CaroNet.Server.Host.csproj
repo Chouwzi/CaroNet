@@ -2,6 +2,7 @@
 
   <ItemGroup>
     <ProjectReference Include="..\CaroNet.Shared\CaroNet.Shared.csproj" />
+    <ProjectReference Include="..\CaroNet.Storage\CaroNet.Storage.csproj" />
   </ItemGroup>
 
   <PropertyGroup>
