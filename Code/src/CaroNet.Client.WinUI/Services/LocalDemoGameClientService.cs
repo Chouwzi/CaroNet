@@ -16,8 +16,11 @@ public sealed class LocalDemoGameClientService : IGameClientService
     private string _playerName = "Player";
     private string _playerSymbol = "X";
     private string _roomId = string.Empty;
+    private GameViewState? _currentState;
 
     public event EventHandler<GameViewState>? GameStateUpdated;
+
+    public GameViewState CurrentState => _currentState ?? BuildState(string.Empty);
 
     public Task ConnectAsync(ConnectionRequest request, CancellationToken cancellationToken)
     {
@@ -73,6 +76,14 @@ public sealed class LocalDemoGameClientService : IGameClientService
 
     private GameViewState PublishState(string serverError)
     {
+        var state = BuildState(serverError);
+        _currentState = state;
+        GameStateUpdated?.Invoke(this, state);
+        return state;
+    }
+
+    private GameViewState BuildState(string serverError)
+    {
         var state = new GameViewState(
             _roomId,
             _playerName,
@@ -82,7 +93,6 @@ public sealed class LocalDemoGameClientService : IGameClientService
             serverError,
             BuildCells());
 
-        GameStateUpdated?.Invoke(this, state);
         return state;
     }
 

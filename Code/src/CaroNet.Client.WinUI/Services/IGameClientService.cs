@@ -10,6 +10,8 @@ public interface IGameClientService
 {
     event EventHandler<GameViewState>? GameStateUpdated;
 
+    GameViewState CurrentState { get; }
+
     Task ConnectAsync(ConnectionRequest request, CancellationToken cancellationToken);
 
     Task<GameViewState> CreateRoomAsync(CancellationToken cancellationToken);

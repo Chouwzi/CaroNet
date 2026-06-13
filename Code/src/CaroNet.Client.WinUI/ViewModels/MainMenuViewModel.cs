@@ -1,6 +1,6 @@
+using System;
 using System.Collections.Generic;
 using System.ComponentModel;
-using System.ComponentModel.DataAnnotations;
 using System.Runtime.CompilerServices;
 using System.Threading;
 using System.Threading.Tasks;
@@ -52,10 +52,18 @@ public sealed class MainMenuViewModel : INotifyPropertyChanged
             ConnectionStatus = playerNameError;
             return false;
         }
-        await _gameClient.ConnectAsync(
-            new ConnectionRequest(PlayerName, DefaultHost, DefaultPort), CancellationToken.None);
-        ConnectionStatus = $"Đã connect tới server mặc định {DefaultHost}:{DefaultPort}";
-        return true;
+        try
+        {
+            await _gameClient.ConnectAsync(
+                new ConnectionRequest(PlayerName, DefaultHost, DefaultPort), CancellationToken.None);
+            ConnectionStatus = $"Đã connect tới server mặc định {DefaultHost}:{DefaultPort}";
+            return true;
+        }
+        catch (Exception ex)
+        {
+            ConnectionStatus = ex.Message;
+            return false;
+        }
     }
 
     public async Task<bool> CreateRoomAsync()
@@ -68,8 +76,17 @@ public sealed class MainMenuViewModel : INotifyPropertyChanged
             return false;
         }
 
-        await _gameClient.CreateRoomAsync(CancellationToken.None);
-        return true;
+        try
+        {
+            GameViewState state = await _gameClient.CreateRoomAsync(CancellationToken.None);
+            ConnectionStatus = state.ConnectionStatus;
+            return !string.IsNullOrWhiteSpace(state.RoomId);
+        }
+        catch (Exception ex)
+        {
+            ConnectionStatus = ex.Message;
+            return false;
+        }
     }
 
     public async Task<bool> JoinRoomAsync()
@@ -89,8 +106,17 @@ public sealed class MainMenuViewModel : INotifyPropertyChanged
             return false;
         }
 
-        await _gameClient.JoinRoomAsync(RoomId, CancellationToken.None);
-        return true;
+        try
+        {
+            GameViewState state = await _gameClient.JoinRoomAsync(RoomId, CancellationToken.None);
+            ConnectionStatus = state.ConnectionStatus;
+            return !string.IsNullOrWhiteSpace(state.RoomId);
+        }
+        catch (Exception ex)
+        {
+            ConnectionStatus = ex.Message;
+            return false;
+        }
     }
 
     private void SetProperty<T>(ref T field, T value, [CallerMemberName] string? propertyName = null)
