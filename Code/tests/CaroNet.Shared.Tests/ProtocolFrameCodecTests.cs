@@ -53,6 +53,31 @@ public class ProtocolFrameCodecTests
             decoded.Type);
     }
 
+    [Theory]
+    [InlineData(MessageType.HelloAccepted)]
+    [InlineData(MessageType.RoomJoined)]
+    [InlineData(MessageType.GameStarted)]
+    [InlineData(MessageType.GameStateUpdated)]
+    [InlineData(MessageType.MoveRejected)]
+    [InlineData(MessageType.GameEnded)]
+    [InlineData(MessageType.Error)]
+    public void Decode_Should_Accept_P0_Server_MessageTypes(MessageType messageType)
+    {
+        var message = new MessageEnvelope
+        {
+            Type = messageType,
+            Payload = JsonDocument.Parse("{}")
+                .RootElement
+                .Clone()
+        };
+
+        byte[] frame = ProtocolFrameCodec.Encode(message);
+
+        MessageEnvelope decoded = ProtocolFrameCodec.Decode(frame);
+
+        Assert.Equal(messageType, decoded.Type);
+    }
+
     [Fact]
     public void Decode_Should_Reject_Unsupported_MessageType()
     {
