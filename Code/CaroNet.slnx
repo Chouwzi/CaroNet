@@ -16,6 +16,9 @@
     <Project Path="src/CaroNet.Storage/CaroNet.Storage.csproj" />
   </Folder>
   <Folder Name="/tests/">
+    <Project Path="tests/CaroNet.Client.WinUI.Tests/CaroNet.Client.WinUI.Tests.csproj">
+      <Platform Solution="*|x64" Project="x64" />
+    </Project>
     <Project Path="tests/CaroNet.Shared.Tests/CaroNet.Shared.Tests.csproj" />
   </Folder>
 </Solution>
