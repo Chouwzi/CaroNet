@@ -1,4 +1,4 @@
-﻿using Microsoft.Data.Sqlite;
+using Microsoft.Data.Sqlite;
 
 namespace CaroNet.Storage.Database;
 
@@ -8,7 +8,7 @@ public sealed class DatabaseInitializer
 
     public DatabaseInitializer(string databasePath)
     {
-        _connectionString = $"Data Source={databasePath}";
+        _connectionString = SqliteConnectionFactory.CreateConnectionString(databasePath);
     }
 
     public void Initialize()
@@ -17,13 +17,16 @@ public sealed class DatabaseInitializer
 
         connection.Open();
 
+        using var pragmaCommand = connection.CreateCommand();
+        pragmaCommand.CommandText = "PRAGMA foreign_keys = ON;";
+        pragmaCommand.ExecuteNonQuery();
+
         CreateMatchesTable(connection);
         CreateMatchMovesTable(connection);
         CreatePlayerRecordsTable(connection);
     }
 
-    private static void CreateMatchesTable(
-        SqliteConnection connection)
+    private static void CreateMatchesTable(SqliteConnection connection)
     {
         const string sql =
             """
@@ -40,14 +43,11 @@ public sealed class DatabaseInitializer
             """;
 
         using var command = connection.CreateCommand();
-
         command.CommandText = sql;
-
         command.ExecuteNonQuery();
     }
 
-    private static void CreateMatchMovesTable(
-        SqliteConnection connection)
+    private static void CreateMatchMovesTable(SqliteConnection connection)
     {
         const string sql =
             """
@@ -59,35 +59,32 @@ public sealed class DatabaseInitializer
                 PlayerName TEXT NOT NULL,
                 Row INTEGER NOT NULL,
                 Column INTEGER NOT NULL,
-                TimestampUtc TEXT NOT NULL
+                TimestampUtc TEXT NOT NULL,
+                UNIQUE (MatchId, MoveNumber),
+                FOREIGN KEY (MatchId) REFERENCES Matches(MatchId) ON DELETE CASCADE
             );
             """;
 
         using var command = connection.CreateCommand();
-
         command.CommandText = sql;
-
         command.ExecuteNonQuery();
     }
 
-    private static void CreatePlayerRecordsTable(
-        SqliteConnection connection)
+    private static void CreatePlayerRecordsTable(SqliteConnection connection)
     {
         const string sql =
             """
             CREATE TABLE IF NOT EXISTS PlayerRecords
             (
                 PlayerName TEXT PRIMARY KEY,
-                Wins INTEGER NOT NULL,
-                Losses INTEGER NOT NULL,
-                Draws INTEGER NOT NULL
+                Wins INTEGER NOT NULL CHECK (Wins >= 0),
+                Losses INTEGER NOT NULL CHECK (Losses >= 0),
+                Draws INTEGER NOT NULL CHECK (Draws >= 0)
             );
             """;
 
         using var command = connection.CreateCommand();
-
         command.CommandText = sql;
-
         command.ExecuteNonQuery();
     }
 }

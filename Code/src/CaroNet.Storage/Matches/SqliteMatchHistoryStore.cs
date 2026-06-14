@@ -1,29 +1,161 @@
-﻿using Microsoft.Data.Sqlite;
+using System.Globalization;
+using Microsoft.Data.Sqlite;
+using CaroNet.Storage.Database;
 
 namespace CaroNet.Storage.Matches;
 
-public sealed class SqliteMatchHistoryStore
-    : IMatchHistoryStore
+public sealed class SqliteMatchHistoryStore : IMatchHistoryStore
 {
     private readonly string _connectionString;
 
     public SqliteMatchHistoryStore(string databasePath)
     {
-        _connectionString = $"Data Source={databasePath}";
+        _connectionString = SqliteConnectionFactory.CreateConnectionString(databasePath);
     }
 
     public async Task SaveMatchAsync(
         MatchRecord match,
         CancellationToken cancellationToken = default)
     {
-        await using var connection =
-            new SqliteConnection(_connectionString);
+        ValidateCompletedMatch(match);
 
+        await using var connection = new SqliteConnection(_connectionString);
+        await connection.OpenAsync(cancellationToken);
+        await using SqliteTransaction transaction =
+            (SqliteTransaction)await connection.BeginTransactionAsync(cancellationToken);
+
+        await DeleteExistingMovesAsync(connection, transaction, match.MatchId, cancellationToken);
+        await SaveMatchHeaderAsync(connection, transaction, match, cancellationToken);
+
+        foreach (MatchMoveRecord move in match.Moves)
+        {
+            await SaveMoveAsync(connection, transaction, match.MatchId, move, cancellationToken);
+        }
+
+        await transaction.CommitAsync(cancellationToken);
+    }
+
+    public async Task<MatchRecord?> GetMatchAsync(
+        Guid matchId,
+        CancellationToken cancellationToken = default)
+    {
+        await using var connection = new SqliteConnection(_connectionString);
         await connection.OpenAsync(cancellationToken);
 
-        var insertMatch = connection.CreateCommand();
+        await using var matchCommand = connection.CreateCommand();
+        matchCommand.CommandText =
+            """
+            SELECT RoomId, PlayerXName, PlayerOName, WinnerName, StartedAtUtc, EndedAtUtc
+            FROM Matches
+            WHERE MatchId = $matchId;
+            """;
+        matchCommand.Parameters.AddWithValue("$matchId", matchId.ToString());
 
-        insertMatch.CommandText =
+        await using var reader = await matchCommand.ExecuteReaderAsync(cancellationToken);
+
+        if (!await reader.ReadAsync(cancellationToken))
+        {
+            return null;
+        }
+
+        string roomId = reader.GetString(0);
+        string playerX = reader.GetString(1);
+        string playerO = reader.GetString(2);
+        string? winner = reader.IsDBNull(3) ? null : reader.GetString(3);
+        DateTime startedAtUtc = ParseUtc(reader.GetString(4));
+        DateTime? endedAtUtc = reader.IsDBNull(5) ? null : ParseUtc(reader.GetString(5));
+
+        IReadOnlyList<MatchMoveRecord> moves =
+            await ReadMovesAsync(connection, matchId, cancellationToken);
+
+        return new MatchRecord(
+            matchId,
+            roomId,
+            playerX,
+            playerO,
+            winner,
+            startedAtUtc,
+            endedAtUtc,
+            moves);
+    }
+
+    public async Task<IReadOnlyList<MatchRecord>> GetAllMatchesAsync(
+        CancellationToken cancellationToken = default)
+    {
+        await using var connection = new SqliteConnection(_connectionString);
+        await connection.OpenAsync(cancellationToken);
+
+        await using var command = connection.CreateCommand();
+        command.CommandText =
+            """
+            SELECT MatchId
+            FROM Matches
+            ORDER BY EndedAtUtc DESC, RoomId COLLATE NOCASE ASC;
+            """;
+
+        return await ReadMatchesByIdQueryAsync(command, cancellationToken);
+    }
+
+    public async Task<IReadOnlyList<MatchRecord>> GetMatchesByPlayerAsync(
+        string playerName,
+        CancellationToken cancellationToken = default)
+    {
+        if (string.IsNullOrWhiteSpace(playerName))
+        {
+            return [];
+        }
+
+        await using var connection = new SqliteConnection(_connectionString);
+        await connection.OpenAsync(cancellationToken);
+
+        await using var command = connection.CreateCommand();
+        command.CommandText =
+            """
+            SELECT MatchId
+            FROM Matches
+            WHERE PlayerXName = $playerName COLLATE NOCASE
+               OR PlayerOName = $playerName COLLATE NOCASE
+            ORDER BY EndedAtUtc DESC, RoomId COLLATE NOCASE ASC;
+            """;
+        command.Parameters.AddWithValue("$playerName", playerName.Trim());
+
+        return await ReadMatchesByIdQueryAsync(command, cancellationToken);
+    }
+
+    private async Task<IReadOnlyList<MatchRecord>> ReadMatchesByIdQueryAsync(
+        SqliteCommand command,
+        CancellationToken cancellationToken)
+    {
+        var matchIds = new List<Guid>();
+
+        await using SqliteDataReader reader = await command.ExecuteReaderAsync(cancellationToken);
+        while (await reader.ReadAsync(cancellationToken))
+        {
+            matchIds.Add(Guid.Parse(reader.GetString(0)));
+        }
+
+        var matches = new List<MatchRecord>(matchIds.Count);
+        foreach (Guid matchId in matchIds)
+        {
+            MatchRecord? match = await GetMatchAsync(matchId, cancellationToken);
+            if (match is not null)
+            {
+                matches.Add(match);
+            }
+        }
+
+        return matches;
+    }
+
+    private static async Task SaveMatchHeaderAsync(
+        SqliteConnection connection,
+        SqliteTransaction transaction,
+        MatchRecord match,
+        CancellationToken cancellationToken)
+    {
+        await using SqliteCommand command = connection.CreateCommand();
+        command.Transaction = transaction;
+        command.CommandText =
             """
             INSERT OR REPLACE INTO Matches
             (
@@ -47,284 +179,139 @@ public sealed class SqliteMatchHistoryStore
             );
             """;
 
-        insertMatch.Parameters.AddWithValue(
-            "$matchId",
-            match.MatchId.ToString());
+        command.Parameters.AddWithValue("$matchId", match.MatchId.ToString());
+        command.Parameters.AddWithValue("$roomId", match.RoomId.Trim());
+        command.Parameters.AddWithValue("$playerX", match.PlayerXName.Trim());
+        command.Parameters.AddWithValue("$playerO", match.PlayerOName.Trim());
+        command.Parameters.AddWithValue("$winner", (object?)match.WinnerName?.Trim() ?? DBNull.Value);
+        command.Parameters.AddWithValue("$started", match.StartedAtUtc.ToString("O"));
+        command.Parameters.AddWithValue("$ended", match.EndedAtUtc!.Value.ToString("O"));
 
-        insertMatch.Parameters.AddWithValue(
-            "$roomId",
-            match.RoomId);
-
-        insertMatch.Parameters.AddWithValue(
-            "$playerX",
-            match.PlayerXName);
-
-        insertMatch.Parameters.AddWithValue(
-            "$playerO",
-            match.PlayerOName);
-
-        insertMatch.Parameters.AddWithValue(
-            "$winner",
-            (object?)match.WinnerName ?? DBNull.Value);
-
-        insertMatch.Parameters.AddWithValue(
-            "$started",
-            match.StartedAtUtc.ToString("O"));
-
-        insertMatch.Parameters.AddWithValue(
-            "$ended",
-            match.EndedAtUtc?.ToString("O") ?? (object)DBNull.Value);
-
-        await insertMatch.ExecuteNonQueryAsync(cancellationToken);
-
-        foreach (var move in match.Moves)
-        {
-            var insertMove = connection.CreateCommand();
-
-            insertMove.CommandText =
-                """
-                INSERT INTO MatchMoves
-                (
-                    MatchId,
-                    MoveNumber,
-                    PlayerName,
-                    Row,
-                    Column,
-                    TimestampUtc
-                )
-                VALUES
-                (
-                    $matchId,
-                    $moveNumber,
-                    $player,
-                    $row,
-                    $column,
-                    $timestamp
-                );
-                """;
-
-            insertMove.Parameters.AddWithValue(
-                "$matchId",
-                match.MatchId.ToString());
-
-            insertMove.Parameters.AddWithValue(
-                "$moveNumber",
-                move.MoveNumber);
-
-            insertMove.Parameters.AddWithValue(
-                "$player",
-                move.PlayerName);
-
-            insertMove.Parameters.AddWithValue(
-                "$row",
-                move.Row);
-
-            insertMove.Parameters.AddWithValue(
-                "$column",
-                move.Column);
-
-            insertMove.Parameters.AddWithValue(
-                "$timestamp",
-                move.TimestampUtc.ToString("O"));
-
-            await insertMove.ExecuteNonQueryAsync(cancellationToken);
-        }
+        await command.ExecuteNonQueryAsync(cancellationToken);
     }
 
-    public async Task<MatchRecord?> GetMatchAsync(
-    Guid matchId,
-    CancellationToken cancellationToken = default)
+    private static async Task SaveMoveAsync(
+        SqliteConnection connection,
+        SqliteTransaction transaction,
+        Guid matchId,
+        MatchMoveRecord move,
+        CancellationToken cancellationToken)
     {
-        await using var connection =
-            new SqliteConnection(_connectionString);
-
-        await connection.OpenAsync(cancellationToken);
-
-        var matchCommand = connection.CreateCommand();
-
-        matchCommand.CommandText =
+        await using SqliteCommand command = connection.CreateCommand();
+        command.Transaction = transaction;
+        command.CommandText =
             """
-        SELECT
-            MatchId,
-            RoomId,
-            PlayerXName,
-            PlayerOName,
-            WinnerName,
-            StartedAtUtc,
-            EndedAtUtc
-        FROM Matches
-        WHERE MatchId = $matchId;
-        """;
+            INSERT INTO MatchMoves
+            (
+                MatchId,
+                MoveNumber,
+                PlayerName,
+                Row,
+                Column,
+                TimestampUtc
+            )
+            VALUES
+            (
+                $matchId,
+                $moveNumber,
+                $player,
+                $row,
+                $column,
+                $timestamp
+            );
+            """;
 
-        matchCommand.Parameters.AddWithValue(
-            "$matchId",
-            matchId.ToString());
+        command.Parameters.AddWithValue("$matchId", matchId.ToString());
+        command.Parameters.AddWithValue("$moveNumber", move.MoveNumber);
+        command.Parameters.AddWithValue("$player", move.PlayerName.Trim());
+        command.Parameters.AddWithValue("$row", move.Row);
+        command.Parameters.AddWithValue("$column", move.Column);
+        command.Parameters.AddWithValue("$timestamp", move.TimestampUtc.ToString("O"));
 
-        await using var reader =
-            await matchCommand.ExecuteReaderAsync(cancellationToken);
+        await command.ExecuteNonQueryAsync(cancellationToken);
+    }
 
-        if (!await reader.ReadAsync(cancellationToken))
-        {
-            return null;
-        }
+    private static async Task DeleteExistingMovesAsync(
+        SqliteConnection connection,
+        SqliteTransaction transaction,
+        Guid matchId,
+        CancellationToken cancellationToken)
+    {
+        await using SqliteCommand command = connection.CreateCommand();
+        command.Transaction = transaction;
+        command.CommandText =
+            """
+            DELETE FROM MatchMoves
+            WHERE MatchId = $matchId;
+            """;
+        command.Parameters.AddWithValue("$matchId", matchId.ToString());
 
-        var roomId = reader.GetString(1);
-        var playerX = reader.GetString(2);
-        var playerO = reader.GetString(3);
+        await command.ExecuteNonQueryAsync(cancellationToken);
+    }
 
-        string? winner =
-            reader.IsDBNull(4)
-                ? null
-                : reader.GetString(4);
-
-        var startedAtUtc =
-            DateTime.Parse(reader.GetString(5));
-
-        DateTime? endedAtUtc =
-            reader.IsDBNull(6)
-                ? null
-                : DateTime.Parse(reader.GetString(6));
+    private static async Task<IReadOnlyList<MatchMoveRecord>> ReadMovesAsync(
+        SqliteConnection connection,
+        Guid matchId,
+        CancellationToken cancellationToken)
+    {
+        await using SqliteCommand command = connection.CreateCommand();
+        command.CommandText =
+            """
+            SELECT MoveNumber, PlayerName, Row, Column, TimestampUtc
+            FROM MatchMoves
+            WHERE MatchId = $matchId
+            ORDER BY MoveNumber ASC;
+            """;
+        command.Parameters.AddWithValue("$matchId", matchId.ToString());
 
         var moves = new List<MatchMoveRecord>();
 
-        var moveCommand = connection.CreateCommand();
-
-        moveCommand.CommandText =
-            """
-        SELECT
-            MoveNumber,
-            PlayerName,
-            Row,
-            Column,
-            TimestampUtc
-        FROM MatchMoves
-        WHERE MatchId = $matchId
-        ORDER BY MoveNumber;
-        """;
-
-        moveCommand.Parameters.AddWithValue(
-            "$matchId",
-            matchId.ToString());
-
-        await using var moveReader =
-            await moveCommand.ExecuteReaderAsync(cancellationToken);
-
-        while (await moveReader.ReadAsync(cancellationToken))
+        await using SqliteDataReader reader = await command.ExecuteReaderAsync(cancellationToken);
+        while (await reader.ReadAsync(cancellationToken))
         {
             moves.Add(
                 new MatchMoveRecord(
-                    moveReader.GetInt32(0),
-                    moveReader.GetString(1),
-                    moveReader.GetInt32(2),
-                    moveReader.GetInt32(3),
-                    DateTime.Parse(moveReader.GetString(4))));
+                    reader.GetInt32(0),
+                    reader.GetString(1),
+                    reader.GetInt32(2),
+                    reader.GetInt32(3),
+                    ParseUtc(reader.GetString(4))));
         }
 
-        return new MatchRecord(
-            matchId,
-            roomId,
-            playerX,
-            playerO,
-            winner,
-            startedAtUtc,
-            endedAtUtc,
-            moves);
+        return moves;
     }
 
-    public async Task<IReadOnlyList<MatchRecord>> GetAllMatchesAsync(
-    CancellationToken cancellationToken = default)
+    private static DateTime ParseUtc(string value)
     {
-        await using var connection =
-            new SqliteConnection(_connectionString);
-
-        await connection.OpenAsync(cancellationToken);
-
-        var command = connection.CreateCommand();
-
-        command.CommandText =
-            """
-        SELECT MatchId
-        FROM Matches
-        ORDER BY EndedAtUtc DESC;
-        """;
-
-        var matchIds = new List<Guid>();
-
-        await using var reader =
-            await command.ExecuteReaderAsync(cancellationToken);
-
-        while (await reader.ReadAsync(cancellationToken))
-        {
-            matchIds.Add(
-                Guid.Parse(reader.GetString(0)));
-        }
-
-        var matches = new List<MatchRecord>();
-
-        foreach (var matchId in matchIds)
-        {
-            var match = await GetMatchAsync(
-                matchId,
-                cancellationToken);
-
-            if (match is not null)
-            {
-                matches.Add(match);
-            }
-        }
-
-        return matches;
+        return DateTime.Parse(value, null, DateTimeStyles.RoundtripKind);
     }
 
-    public async Task<IReadOnlyList<MatchRecord>> GetMatchesByPlayerAsync(
-    string playerName,
-    CancellationToken cancellationToken = default)
+    private static void ValidateCompletedMatch(MatchRecord match)
     {
-        await using var connection =
-            new SqliteConnection(_connectionString);
-
-        await connection.OpenAsync(cancellationToken);
-
-        var command = connection.CreateCommand();
-
-        command.CommandText =
-            """
-        SELECT MatchId
-        FROM Matches
-        WHERE PlayerXName = $playerName
-           OR PlayerOName = $playerName
-        ORDER BY EndedAtUtc DESC;
-        """;
-
-        command.Parameters.AddWithValue(
-            "$playerName",
-            playerName);
-
-        var matchIds = new List<Guid>();
-
-        await using var reader =
-            await command.ExecuteReaderAsync(cancellationToken);
-
-        while (await reader.ReadAsync(cancellationToken))
+        if (match.MatchId == Guid.Empty)
         {
-            matchIds.Add(
-                Guid.Parse(reader.GetString(0)));
+            throw new ArgumentException("MatchId không được để trống.", nameof(match));
         }
 
-        var matches = new List<MatchRecord>();
-
-        foreach (var matchId in matchIds)
+        if (string.IsNullOrWhiteSpace(match.RoomId))
         {
-            var match = await GetMatchAsync(
-                matchId,
-                cancellationToken);
-
-            if (match is not null)
-            {
-                matches.Add(match);
-            }
+            throw new ArgumentException("RoomId không được để trống.", nameof(match));
         }
 
-        return matches;
+        if (string.IsNullOrWhiteSpace(match.PlayerXName) ||
+            string.IsNullOrWhiteSpace(match.PlayerOName))
+        {
+            throw new ArgumentException("Tên người chơi không được để trống.", nameof(match));
+        }
+
+        if (!match.IsCompleted)
+        {
+            throw new InvalidOperationException("Chỉ lưu lịch sử khi ván đấu đã kết thúc.");
+        }
+
+        if (match.EndedAtUtc < match.StartedAtUtc)
+        {
+            throw new ArgumentException("Thời điểm kết thúc không được trước thời điểm bắt đầu.", nameof(match));
+        }
     }
 }

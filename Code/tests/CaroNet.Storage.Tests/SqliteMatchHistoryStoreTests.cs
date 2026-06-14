@@ -1,4 +1,4 @@
-﻿using CaroNet.Storage.Database;
+using CaroNet.Storage.Database;
 using CaroNet.Storage.Matches;
 
 namespace CaroNet.Storage.Tests;
@@ -6,70 +6,103 @@ namespace CaroNet.Storage.Tests;
 public sealed class SqliteMatchHistoryStoreTests
 {
     [Fact]
-    public async Task Save_And_Read_Back_Match()
+    public async Task SaveMatchAsync_luu_va_doc_lai_tran_da_ket_thuc_tu_database_moi()
     {
-        var databasePath =
-            Path.Combine(
-                Path.GetTempPath(),
-                $"{Guid.NewGuid()}.db");
-
-        var initializer =
-            new DatabaseInitializer(databasePath);
-
-        initializer.Initialize();
-
-        var store =
-            new SqliteMatchHistoryStore(databasePath);
-
-        var matchId = Guid.NewGuid();
-
-        var match =
-            new MatchRecord(
-                matchId,
-                "ROOM-1",
-                "Alice",
-                "Bob",
-                "Alice",
-                DateTime.UtcNow.AddMinutes(-5),
-                DateTime.UtcNow,
-                new List<MatchMoveRecord>
-                {
-                    new(
-                        1,
-                        "Alice",
-                        7,
-                        7,
-                        DateTime.UtcNow),
-
-                    new(
-                        2,
-                        "Bob",
-                        7,
-                        8,
-                        DateTime.UtcNow)
-                });
+        using var database = TemporarySqliteDatabase.Create();
+        var store = new SqliteMatchHistoryStore(database.Path);
+        MatchRecord match = CreateCompletedMatch(Guid.NewGuid(), "ROOM-1", "Alice", "Bob", "Alice");
 
         await store.SaveMatchAsync(match);
 
-        var loaded =
-            await store.GetMatchAsync(matchId);
+        var reloadedStore = new SqliteMatchHistoryStore(database.Path);
+        MatchRecord? loaded = await reloadedStore.GetMatchAsync(match.MatchId);
 
         Assert.NotNull(loaded);
+        Assert.Equal(match.RoomId, loaded!.RoomId);
+        Assert.Equal(match.PlayerXName, loaded.PlayerXName);
+        Assert.Equal(match.PlayerOName, loaded.PlayerOName);
+        Assert.Equal(match.WinnerName, loaded.WinnerName);
+        Assert.Equal(2, loaded.Moves.Count);
+    }
 
-        Assert.Equal(
-            match.RoomId,
-            loaded!.RoomId);
+    [Fact]
+    public async Task SaveMatchAsync_luu_lai_cung_match_khong_nhan_doi_nuoc_di()
+    {
+        using var database = TemporarySqliteDatabase.Create();
+        var store = new SqliteMatchHistoryStore(database.Path);
+        Guid matchId = Guid.NewGuid();
+        MatchRecord first = CreateCompletedMatch(matchId, "ROOM-1", "Alice", "Bob", "Alice");
+        MatchRecord replacement = first with
+        {
+            Moves =
+            [
+                new MatchMoveRecord(1, "Alice", 3, 3, DateTime.UtcNow)
+            ]
+        };
 
-        Assert.Equal(
-            match.PlayerXName,
-            loaded.PlayerXName);
+        await store.SaveMatchAsync(first);
+        await store.SaveMatchAsync(replacement);
 
-        Assert.Equal(
-            match.PlayerOName,
-            loaded.PlayerOName);
+        MatchRecord? loaded = await store.GetMatchAsync(matchId);
 
-        Assert.Equal(
-            2,
-            loaded.Moves.Count);
+        Assert.NotNull(loaded);
+        Assert.Single(loaded!.Moves);
+        Assert.Equal(3, loaded.Moves[0].Row);
+    }
+
+    [Fact]
+    public async Task SaveMatchAsync_tu_choi_tran_chua_ket_thuc()
+    {
+        using var database = TemporarySqliteDatabase.Create();
+        var store = new SqliteMatchHistoryStore(database.Path);
+        MatchRecord unfinished = CreateCompletedMatch(Guid.NewGuid(), "ROOM-2", "Alice", "Bob", null)
+            with
+            {
+                EndedAtUtc = null
+            };
+
+        await Assert.ThrowsAsync<InvalidOperationException>(
+            () => store.SaveMatchAsync(unfinished));
+    }
+
+    [Fact]
+    public async Task GetMatchesByPlayerAsync_loc_theo_ten_khong_phan_biet_hoa_thuong()
+    {
+        using var database = TemporarySqliteDatabase.Create();
+        var store = new SqliteMatchHistoryStore(database.Path);
+        MatchRecord aliceMatch = CreateCompletedMatch(Guid.NewGuid(), "ROOM-A", "Alice", "Bob", "Alice");
+        MatchRecord otherMatch = CreateCompletedMatch(Guid.NewGuid(), "ROOM-B", "Carol", "Dan", "Carol");
+
+        await store.SaveMatchAsync(aliceMatch);
+        await store.SaveMatchAsync(otherMatch);
+
+        IReadOnlyList<MatchRecord> matches = await store.GetMatchesByPlayerAsync("alice");
+
+        Assert.Single(matches);
+        Assert.Equal(aliceMatch.MatchId, matches[0].MatchId);
+    }
+
+    private static MatchRecord CreateCompletedMatch(
+        Guid matchId,
+        string roomId,
+        string playerXName,
+        string playerOName,
+        string? winnerName)
+    {
+        DateTime startedAtUtc = DateTime.UtcNow.AddMinutes(-5);
+        DateTime endedAtUtc = DateTime.UtcNow;
+
+        return new MatchRecord(
+            matchId,
+            roomId,
+            playerXName,
+            playerOName,
+            winnerName,
+            startedAtUtc,
+            endedAtUtc,
+            [
+                new MatchMoveRecord(1, playerXName, 7, 7, startedAtUtc.AddSeconds(10)),
+                new MatchMoveRecord(2, playerOName, 7, 8, startedAtUtc.AddSeconds(20))
+            ]);
     }
 }
