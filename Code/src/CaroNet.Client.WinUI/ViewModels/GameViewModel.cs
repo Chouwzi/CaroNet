@@ -33,6 +33,8 @@ public sealed class GameViewModel : INotifyPropertyChanged
                 BoardCells.Add(new BoardCellViewModel(row, column));
             }
         }
+
+        ApplyState(_gameClient.CurrentState);
     }
 
     public event PropertyChangedEventHandler? PropertyChanged;
