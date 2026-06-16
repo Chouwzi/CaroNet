@@ -38,10 +38,24 @@ public sealed class ClientSession
 
         try
         {
-            await Socket.SendAsync(
-                frame,
-                SocketFlags.None,
-                cancellationToken);
+            int totalSent = 0;
+
+            while (totalSent < frame.Length)
+            {
+                int sent =
+                    await Socket.SendAsync(
+                        frame.AsMemory(totalSent),
+                        SocketFlags.None,
+                        cancellationToken);
+
+                if (sent == 0)
+                {
+                    throw new InvalidOperationException(
+                        "Socket closed while sending.");
+                }
+
+                totalSent += sent;
+            }
         }
         finally
         {
