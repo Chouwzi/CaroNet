@@ -14,6 +14,10 @@
 - [ ] Server: join room.
 - [ ] Server: reject move from wrong player.
 - [ ] Server: broadcast state after valid move.
+- [x] Storage: save and read completed match history.
+- [x] Storage: reject unfinished match history.
+- [x] Storage: keep in-memory match snapshots isolated from caller mutation.
+- [x] Storage: list best player records by win rate and wins.
 
 ## Manual tests
 
