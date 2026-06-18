@@ -16,4 +16,4 @@ public sealed class LoggingMessageDispatcher
 
         return Task.CompletedTask;
     }
-}
+}

@@ -6,6 +6,8 @@ namespace CaroNet.Server.Host.Networking;
 
 public sealed class SocketServer
 {
+    private const int ListenPort = 5000;
+
     private readonly ClientSessionRegistry _registry;
     private readonly IMessageDispatcher _dispatcher;
 
@@ -27,50 +29,73 @@ public sealed class SocketServer
             SocketType.Stream,
             ProtocolType.Tcp);
 
-        _listener.Bind(
-            new IPEndPoint(
-                IPAddress.Any,
-                5000));
-
-        _listener.Listen(100);
-
-        Console.WriteLine(
-            "[SERVER] Listening on port 5000");
-
-        while (!cancellationToken.IsCancellationRequested)
+        try
         {
-            Socket socket =
-                await _listener.AcceptAsync(
-                    cancellationToken);
+            _listener.Bind(
+                new IPEndPoint(
+                    IPAddress.Any,
+                    ListenPort));
 
-            var session =
-                new ClientSession(
-                   socket,
-                      _dispatcher);
-
-            _registry.Add(session);
+            _listener.Listen(100);
 
             Console.WriteLine(
-                $"[SERVER] Client connected. Online={_registry.Count}");
+                $"[SERVER] Listening on port {ListenPort}");
 
-            _ = Task.Run(
-                async () =>
+            while (!cancellationToken.IsCancellationRequested)
+            {
+                Socket socket;
+
+                try
+                {
+                    socket =
+                        await _listener.AcceptAsync(
+                            cancellationToken);
+                }
+                catch (OperationCanceledException)
+                {
+                    break;
+                }
+
+                var session =
+                    new ClientSession(
+                        socket,
+                        _dispatcher);
+
+                _registry.Add(session);
+
+                Console.WriteLine(
+                    $"[SERVER] Client connected. Online={_registry.Count}");
+
+                // Bug fix: do NOT pass cancellationToken to Task.Run as scheduler CT.
+                // Passing it there would cancel the *scheduling* of the task, so if the
+                // token fires before the task is scheduled, the finally block that removes
+                // the session from the registry would never execute (session leak).
+                // The lambda already receives the token via the closure and forwards it
+                // to session.RunAsync, which handles graceful shutdown internally.
+                _ = Task.Run(async () =>
                 {
                     try
                     {
-                        await session.RunAsync(
-                            cancellationToken);
+                        await session.RunAsync(cancellationToken);
                     }
                     finally
                     {
-                        _registry.Remove(
-                            session.Id);
+                        _registry.Remove(session.Id);
 
                         Console.WriteLine(
                             $"[SERVER] Client removed. Online={_registry.Count}");
                     }
-                },
-                cancellationToken);
+                });
+            }
+        }
+        finally
+        {
+            // Bug fix: dispose listener so the OS releases port ListenPort immediately.
+            // Without this, the port stays bound until GC finalizes the socket.
+            _listener.Dispose();
+
+            Console.WriteLine(
+                "[SERVER] Listener socket closed.");
         }
     }
-}
+}

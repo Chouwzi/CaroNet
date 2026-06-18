@@ -9,4 +9,4 @@ public interface IMessageDispatcher
         ClientSession session,
         MessageEnvelope message,
         CancellationToken cancellationToken);
-}
+}

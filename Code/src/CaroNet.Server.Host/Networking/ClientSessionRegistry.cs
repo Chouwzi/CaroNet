@@ -28,4 +28,4 @@ public sealed class ClientSessionRegistry
 
     public int Count =>
         _sessions.Count;
-}
+}
