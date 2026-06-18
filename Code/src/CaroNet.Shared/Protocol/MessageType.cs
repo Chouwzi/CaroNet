@@ -2,7 +2,6 @@ namespace CaroNet.Shared.Protocol;
 
 public enum MessageType
 {
-    // Client -> Server
     Hello = 1,
     CreateRoom = 2,
     JoinRoom = 3,
@@ -12,16 +11,15 @@ public enum MessageType
     Heartbeat = 7,
     Reconnect = 8,
 
-    // Server -> Client
-    HelloAccepted = 20,
-    RoomListUpdated = 21,
-    RoomJoined = 22,
-    GameStarted = 23,
-    MoveAccepted = 24,
-    MoveRejected = 25,
-    GameStateUpdated = 26,
-    GameEnded = 27,
-    ChatReceived = 28,
+    HelloAccepted = 50,
+    RoomListUpdated = 51,
+    RoomJoined = 52,
+    GameStarted = 53,
+    MoveAccepted = 54,
+    MoveRejected = 55,
+    GameStateUpdated = 56,
+    GameEnded = 57,
+    ChatReceived = 58,
 
     Error = 100
-}
+}

@@ -20,4 +20,4 @@ public sealed class MessageEnvelope
 
     [JsonPropertyName("payload")]
     public JsonElement? Payload { get; init; }
-}
+}

@@ -4,12 +4,6 @@ namespace CaroNet.Shared.Protocol;
 
 public sealed class ProtocolFrameReader
 {
-    // Must match ProtocolFrameCodec.MaxPayloadLength so the reader rejects
-    // oversized frames as early as the length header is received, preventing
-    // unbounded memory growth when a buggy or malicious client sends a huge
-    // length value before any payload bytes arrive.
-    private const int MaxPayloadLength = 1024 * 1024; // 1 MB
-
     private readonly List<byte> _buffer = [];
 
     public void Append(ReadOnlySpan<byte> data)
@@ -30,10 +24,10 @@ public sealed class ProtocolFrameReader
             BinaryPrimitives.ReadInt32BigEndian(
                 _buffer.Take(4).ToArray());
 
-        if (payloadLength < 0 || payloadLength > MaxPayloadLength)
+        if (payloadLength < 0)
         {
             throw new InvalidOperationException(
-                $"Invalid payload length: {payloadLength}. Maximum allowed is {MaxPayloadLength} bytes.");
+                "Invalid payload length.");
         }
 
         int totalLength =
@@ -54,4 +48,4 @@ public sealed class ProtocolFrameReader
 
         return true;
     }
-}
+}
