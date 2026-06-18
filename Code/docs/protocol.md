@@ -61,15 +61,15 @@ Every message is wrapped in a `MessageEnvelope`:
 
 | Value | Name               | Enum int | Payload DTO           |
 |-------|--------------------|----------|-----------------------|
-| `HelloAccepted`    | Handshake OK    | 20 | _(none)_           |
-| `RoomListUpdated`  | Room list sync  | 21 | _(future)_         |
-| `RoomJoined`       | Joined a room   | 22 | _(none)_           |
-| `GameStarted`      | Match started   | 23 | `GameStatePayload` |
-| `MoveAccepted`     | Move accepted   | 24 | `GameStatePayload` |
-| `MoveRejected`     | Move rejected   | 25 | `ErrorPayload`     |
-| `GameStateUpdated` | Board updated   | 26 | `GameStatePayload` |
-| `GameEnded`        | Match ended     | 27 | `GameStatePayload` |
-| `ChatReceived`     | Chat received   | 28 | _(future)_         |
+| `HelloAccepted`    | Handshake OK    | 50 | _(none)_           |
+| `RoomListUpdated`  | Room list sync  | 51 | _(future)_         |
+| `RoomJoined`       | Joined a room   | 52 | _(none)_           |
+| `GameStarted`      | Match started   | 53 | `GameStatePayload` |
+| `MoveAccepted`     | Move accepted   | 54 | `GameStatePayload` |
+| `MoveRejected`     | Move rejected   | 55 | `ErrorPayload`     |
+| `GameStateUpdated` | Board updated   | 56 | `GameStatePayload` |
+| `GameEnded`        | Match ended     | 57 | `GameStatePayload` |
+| `ChatReceived`     | Chat received   | 58 | _(future)_         |
 | `Error`            | Generic error   | 100| `ErrorPayload`     |
 
 ## Payload DTOs
