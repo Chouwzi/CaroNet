@@ -24,4 +24,4 @@ public enum MessageType
     ChatReceived = 28,
 
     Error = 100
-}
+}
