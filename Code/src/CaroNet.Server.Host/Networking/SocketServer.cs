@@ -82,6 +82,12 @@ public sealed class SocketServer
                     {
                         _registry.Remove(session.Id);
 
+                        // Notify dispatcher so room cleanup happens
+                        if (_dispatcher is GameMessageDispatcher gameDispatcher)
+                        {
+                            await gameDispatcher.HandleDisconnectAsync(session.Id);
+                        }
+
                         Console.WriteLine(
                             $"[SERVER] Client removed. Online={_registry.Count}");
                     }
