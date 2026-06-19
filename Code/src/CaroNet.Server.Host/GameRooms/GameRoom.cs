@@ -3,10 +3,7 @@ using CaroNet.Shared.Game;
 
 namespace CaroNet.Server.Host.GameRooms;
 
-/// <summary>
-/// Represents a single game room holding two players and game state.
-/// All public methods are guarded by a lock for thread-safety.
-/// </summary>
+// Phòng chơi chứa 2 người và trạng thái ván.
 public sealed class GameRoom
 {
     private readonly object _lock = new();
@@ -27,9 +24,7 @@ public sealed class GameRoom
 
     public bool IsEmpty => PlayerX is null && PlayerO is null;
 
-    /// <summary>
-    /// Adds a player to the room. Returns the assigned symbol or null if room is full.
-    /// </summary>
+    // Thêm người chơi, trả về ký hiệu (X/O) hoặc null nếu phòng đầy.
     public PlayerSymbol? TryAddPlayer(ClientSession session, string playerName)
     {
         lock (_lock)
@@ -48,13 +43,10 @@ public sealed class GameRoom
                 return PlayerSymbol.O;
             }
 
-            return null; // Room is full
+            return null;
         }
     }
 
-    /// <summary>
-    /// Removes a player from the room when they disconnect.
-    /// </summary>
     public void RemovePlayer(Guid sessionId)
     {
         lock (_lock)
@@ -72,9 +64,6 @@ public sealed class GameRoom
         }
     }
 
-    /// <summary>
-    /// Gets the symbol assigned to a session, or null if not in this room.
-    /// </summary>
     public PlayerSymbol? GetPlayerSymbol(Guid sessionId)
     {
         lock (_lock)
@@ -85,9 +74,6 @@ public sealed class GameRoom
         }
     }
 
-    /// <summary>
-    /// Attempts to make a move. Thread-safe via lock.
-    /// </summary>
     public MoveResult TryMakeMove(Guid sessionId, int row, int column)
     {
         lock (_lock)
@@ -100,9 +86,6 @@ public sealed class GameRoom
         }
     }
 
-    /// <summary>
-    /// Gets both player sessions (for broadcasting).
-    /// </summary>
     public IReadOnlyList<ClientSession> GetPlayers()
     {
         lock (_lock)
@@ -114,9 +97,7 @@ public sealed class GameRoom
         }
     }
 
-    /// <summary>
-    /// Builds the board as string[][] for GameStatePayload.
-    /// </summary>
+    // Chuyển board thành string[][] để gửi cho client.
     public string[][] BuildBoardPayload()
     {
         lock (_lock)
@@ -140,7 +121,6 @@ public sealed class GameRoom
         }
     }
 
-    // Internal helper without lock (caller must hold lock)
     private PlayerSymbol? GetPlayerSymbolUnsafe(Guid sessionId)
     {
         if (PlayerX?.Id == sessionId) return PlayerSymbol.X;

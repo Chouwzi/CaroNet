@@ -66,12 +66,7 @@ public sealed class SocketServer
                 Console.WriteLine(
                     $"[SERVER] Client connected. Online={_registry.Count}");
 
-                // Bug fix: do NOT pass cancellationToken to Task.Run as scheduler CT.
-                // Passing it there would cancel the *scheduling* of the task, so if the
-                // token fires before the task is scheduled, the finally block that removes
-                // the session from the registry would never execute (session leak).
-                // The lambda already receives the token via the closure and forwards it
-                // to session.RunAsync, which handles graceful shutdown internally.
+                // Không truyền cancellationToken vào Task.Run để tránh leak session
                 _ = Task.Run(async () =>
                 {
                     try
@@ -82,7 +77,7 @@ public sealed class SocketServer
                     {
                         _registry.Remove(session.Id);
 
-                        // Notify dispatcher so room cleanup happens
+                        // Dọn room khi client ngắt kết nối
                         if (_dispatcher is GameMessageDispatcher gameDispatcher)
                         {
                             await gameDispatcher.HandleDisconnectAsync(session.Id);
@@ -96,8 +91,7 @@ public sealed class SocketServer
         }
         finally
         {
-            // Bug fix: dispose listener so the OS releases port ListenPort immediately.
-            // Without this, the port stays bound until GC finalizes the socket.
+            // Giải phóng port ngay khi dừng server
             _listener.Dispose();
 
             Console.WriteLine(
