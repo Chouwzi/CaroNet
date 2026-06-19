@@ -21,5 +21,6 @@
     </Project>
     <Project Path="tests/CaroNet.Storage.Tests/CaroNet.Storage.Tests.csproj" />
     <Project Path="tests/CaroNet.Shared.Tests/CaroNet.Shared.Tests.csproj" />
+    <Project Path="tests/CaroNet.Server.Host.Tests/CaroNet.Server.Host.Tests.csproj" />
   </Folder>
 </Solution>

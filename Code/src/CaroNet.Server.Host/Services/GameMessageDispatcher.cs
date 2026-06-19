@@ -1,0 +1,417 @@
+using System.Text.Json;
+using CaroNet.Server.Host.GameRooms;
+using CaroNet.Server.Host.Networking;
+using CaroNet.Shared.Game;
+using CaroNet.Shared.Protocol;
+using CaroNet.Shared.Protocol.Payloads;
+
+namespace CaroNet.Server.Host.Services;
+
+/// <summary>
+/// Dispatches incoming client messages to the RoomManager and broadcasts
+/// responses. Replaces LoggingMessageDispatcher for real gameplay.
+/// </summary>
+public sealed class GameMessageDispatcher : IMessageDispatcher
+{
+    private readonly RoomManager _roomManager;
+    private readonly ClientSessionRegistry _registry;
+
+    /// <summary>Maps session ID → player name (set on Hello).</summary>
+    private readonly System.Collections.Concurrent.ConcurrentDictionary<Guid, string> _playerNames = new();
+
+    public GameMessageDispatcher(
+        RoomManager roomManager,
+        ClientSessionRegistry registry)
+    {
+        _roomManager = roomManager;
+        _registry = registry;
+    }
+
+    public async Task DispatchAsync(
+        ClientSession session,
+        MessageEnvelope message,
+        CancellationToken cancellationToken)
+    {
+        Console.WriteLine(
+            $"[DISPATCH] Client={session.Id} Type={message.Type}");
+
+        switch (message.Type)
+        {
+            case MessageType.Hello:
+                await HandleHelloAsync(session, message, cancellationToken);
+                break;
+
+            case MessageType.CreateRoom:
+                await HandleCreateRoomAsync(session, message, cancellationToken);
+                break;
+
+            case MessageType.JoinRoom:
+                await HandleJoinRoomAsync(session, message, cancellationToken);
+                break;
+
+            case MessageType.MakeMove:
+                await HandleMakeMoveAsync(session, message, cancellationToken);
+                break;
+
+            default:
+                Console.WriteLine(
+                    $"[DISPATCH] Unhandled message type: {message.Type}");
+                break;
+        }
+    }
+
+    /// <summary>
+    /// Called when a client disconnects. Notifies opponent if in a room.
+    /// </summary>
+    public async Task HandleDisconnectAsync(Guid sessionId)
+    {
+        _playerNames.TryRemove(sessionId, out _);
+
+        GameRoom? room = _roomManager.HandleDisconnect(sessionId);
+        if (room is null) return;
+
+        // Notify remaining player that opponent disconnected
+        foreach (var player in room.GetPlayers())
+        {
+            try
+            {
+                await player.SendAsync(new MessageEnvelope
+                {
+                    Type = MessageType.Error,
+                    Payload = JsonSerializer.SerializeToElement(new
+                    {
+                        message = "Đối thủ đã ngắt kết nối."
+                    })
+                }, CancellationToken.None);
+            }
+            catch
+            {
+                // Player may also have disconnected
+            }
+        }
+    }
+
+    private async Task HandleHelloAsync(
+        ClientSession session,
+        MessageEnvelope message,
+        CancellationToken cancellationToken)
+    {
+        string playerName = "Player";
+
+        if (message.Payload.HasValue)
+        {
+            try
+            {
+                var hello = message.Payload.Value.Deserialize<HelloPayload>();
+                if (!string.IsNullOrWhiteSpace(hello?.PlayerName))
+                    playerName = hello.PlayerName.Trim();
+            }
+            catch { /* use default name */ }
+        }
+
+        // Limit player name length (anti-abuse)
+        if (playerName.Length > 30)
+            playerName = playerName[..30];
+
+        _playerNames[session.Id] = playerName;
+
+        await session.SendAsync(new MessageEnvelope
+        {
+            Type = MessageType.HelloAccepted,
+            PlayerId = session.Id.ToString(),
+            Payload = JsonSerializer.SerializeToElement(new
+            {
+                playerName,
+                playerId = session.Id.ToString()
+            })
+        }, cancellationToken);
+    }
+
+    private async Task HandleCreateRoomAsync(
+        ClientSession session,
+        MessageEnvelope message,
+        CancellationToken cancellationToken)
+    {
+        string playerName = GetPlayerName(session.Id);
+
+        GameRoom? room = _roomManager.CreateRoom(session, playerName);
+
+        if (room is null)
+        {
+            await SendErrorAsync(session, "Không thể tạo phòng. Server đã đầy.", cancellationToken);
+            return;
+        }
+
+        await session.SendAsync(new MessageEnvelope
+        {
+            Type = MessageType.RoomJoined,
+            RoomId = room.RoomId,
+            PlayerId = session.Id.ToString(),
+            Payload = JsonSerializer.SerializeToElement(new
+            {
+                roomId = room.RoomId,
+                symbol = "X",
+                playerName
+            })
+        }, cancellationToken);
+    }
+
+    private async Task HandleJoinRoomAsync(
+        ClientSession session,
+        MessageEnvelope message,
+        CancellationToken cancellationToken)
+    {
+        string? roomId = message.RoomId;
+
+        if (string.IsNullOrWhiteSpace(roomId) && message.Payload.HasValue)
+        {
+            try
+            {
+                var joinPayload = message.Payload.Value.Deserialize<JoinRoomPayload>();
+                roomId = joinPayload?.RoomId;
+            }
+            catch { /* invalid payload */ }
+        }
+
+        if (string.IsNullOrWhiteSpace(roomId))
+        {
+            await SendErrorAsync(session, "Mã phòng không hợp lệ.", cancellationToken);
+            return;
+        }
+
+        string playerName = GetPlayerName(session.Id);
+
+        var (room, symbol) = _roomManager.JoinRoom(session, roomId, playerName);
+
+        if (room is null || symbol is null)
+        {
+            await SendErrorAsync(session, "Phòng không tồn tại hoặc đã đầy.", cancellationToken);
+            return;
+        }
+
+        // Tell joiner they're in
+        await session.SendAsync(new MessageEnvelope
+        {
+            Type = MessageType.RoomJoined,
+            RoomId = room.RoomId,
+            PlayerId = session.Id.ToString(),
+            Payload = JsonSerializer.SerializeToElement(new
+            {
+                roomId = room.RoomId,
+                symbol = symbol.Value.ToString(),
+                playerName
+            })
+        }, cancellationToken);
+
+        // If room is full, broadcast GameStarted to both players
+        if (room.IsFull)
+        {
+            await BroadcastGameStartedAsync(room, cancellationToken);
+        }
+    }
+
+    private async Task HandleMakeMoveAsync(
+        ClientSession session,
+        MessageEnvelope message,
+        CancellationToken cancellationToken)
+    {
+        GameRoom? room = _roomManager.GetRoomBySession(session.Id);
+        if (room is null)
+        {
+            await SendErrorAsync(session, "Bạn chưa vào phòng nào.", cancellationToken);
+            return;
+        }
+
+        if (!room.IsFull)
+        {
+            await SendErrorAsync(session, "Chờ đối thủ vào phòng.", cancellationToken);
+            return;
+        }
+
+        int row = 0, col = 0;
+
+        if (message.Payload.HasValue)
+        {
+            try
+            {
+                var movePayload = message.Payload.Value.Deserialize<MakeMovePayload>();
+                if (movePayload is not null)
+                {
+                    row = movePayload.Row;
+                    col = movePayload.Column;
+                }
+            }
+            catch
+            {
+                await SendErrorAsync(session, "Dữ liệu nước đi không hợp lệ.", cancellationToken);
+                return;
+            }
+        }
+
+        MoveResult result = room.TryMakeMove(session.Id, row, col);
+
+        if (!result.IsSuccess)
+        {
+            string reason = result.Reason switch
+            {
+                MoveRejectReason.CellOccupied => "Ô này đã được đánh.",
+                MoveRejectReason.WrongTurn => "Chưa đến lượt của bạn.",
+                MoveRejectReason.OutOfBounds => "Tọa độ ngoài bàn cờ.",
+                MoveRejectReason.GameEnded => "Trò chơi đã kết thúc.",
+                _ => "Nước đi không hợp lệ."
+            };
+
+            await session.SendAsync(new MessageEnvelope
+            {
+                Type = MessageType.MoveRejected,
+                RoomId = room.RoomId,
+                Payload = JsonSerializer.SerializeToElement(new { reason })
+            }, cancellationToken);
+
+            return;
+        }
+
+        // Broadcast updated game state to all players
+        await BroadcastGameStateAsync(room, cancellationToken);
+
+        // Check if game ended
+        if (result.Status != GameStatus.Playing)
+        {
+            await BroadcastGameEndedAsync(room, result.Status, cancellationToken);
+        }
+    }
+
+    private async Task BroadcastGameStartedAsync(
+        GameRoom room, CancellationToken cancellationToken)
+    {
+        var gameState = BuildGameStatePayload(room);
+
+        foreach (var player in room.GetPlayers())
+        {
+            try
+            {
+                var symbol = room.GetPlayerSymbol(player.Id);
+                await player.SendAsync(new MessageEnvelope
+                {
+                    Type = MessageType.GameStarted,
+                    RoomId = room.RoomId,
+                    PlayerId = player.Id.ToString(),
+                    Payload = JsonSerializer.SerializeToElement(new
+                    {
+                        roomId = room.RoomId,
+                        yourSymbol = symbol?.ToString() ?? "",
+                        board = gameState.Board,
+                        currentTurnPlayerId = gameState.CurrentTurnPlayerId
+                    })
+                }, cancellationToken);
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine(
+                    $"[BROADCAST ERROR] {player.Id}: {ex.Message}");
+            }
+        }
+    }
+
+    private async Task BroadcastGameStateAsync(
+        GameRoom room, CancellationToken cancellationToken)
+    {
+        var payload = BuildGameStatePayload(room);
+        var envelope = new MessageEnvelope
+        {
+            Type = MessageType.GameStateUpdated,
+            RoomId = room.RoomId,
+            Payload = JsonSerializer.SerializeToElement(payload)
+        };
+
+        foreach (var player in room.GetPlayers())
+        {
+            try
+            {
+                await player.SendAsync(envelope, cancellationToken);
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine(
+                    $"[BROADCAST ERROR] {player.Id}: {ex.Message}");
+            }
+        }
+    }
+
+    private async Task BroadcastGameEndedAsync(
+        GameRoom room, GameStatus status, CancellationToken cancellationToken)
+    {
+        string? winnerId = status switch
+        {
+            GameStatus.XWon => room.PlayerX?.Id.ToString(),
+            GameStatus.OWon => room.PlayerO?.Id.ToString(),
+            _ => null
+        };
+
+        var envelope = new MessageEnvelope
+        {
+            Type = MessageType.GameEnded,
+            RoomId = room.RoomId,
+            Payload = JsonSerializer.SerializeToElement(new
+            {
+                status = status.ToString(),
+                winnerId,
+                board = room.BuildBoardPayload()
+            })
+        };
+
+        foreach (var player in room.GetPlayers())
+        {
+            try
+            {
+                await player.SendAsync(envelope, cancellationToken);
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine(
+                    $"[BROADCAST ERROR] {player.Id}: {ex.Message}");
+            }
+        }
+    }
+
+    private GameStatePayload BuildGameStatePayload(GameRoom room)
+    {
+        string currentTurnId = room.GameState.CurrentPlayer == PlayerSymbol.X
+            ? room.PlayerX?.Id.ToString() ?? ""
+            : room.PlayerO?.Id.ToString() ?? "";
+
+        return new GameStatePayload
+        {
+            CurrentTurnPlayerId = currentTurnId,
+            Board = room.BuildBoardPayload(),
+            IsGameOver = room.GameState.Status != GameStatus.Playing,
+            WinnerPlayerId = room.GameState.Status switch
+            {
+                GameStatus.XWon => room.PlayerX?.Id.ToString(),
+                GameStatus.OWon => room.PlayerO?.Id.ToString(),
+                _ => null
+            }
+        };
+    }
+
+    private async Task SendErrorAsync(
+        ClientSession session, string errorMessage,
+        CancellationToken cancellationToken)
+    {
+        await session.SendAsync(new MessageEnvelope
+        {
+            Type = MessageType.Error,
+            Payload = JsonSerializer.SerializeToElement(new
+            {
+                message = errorMessage
+            })
+        }, cancellationToken);
+    }
+
+    private string GetPlayerName(Guid sessionId)
+    {
+        return _playerNames.TryGetValue(sessionId, out string? name)
+            ? name
+            : "Player";
+    }
+}

@@ -1,3 +1,4 @@
+using CaroNet.Server.Host.GameRooms;
 using CaroNet.Server.Host.Networking;
 using CaroNet.Server.Host.Services;
 
@@ -19,8 +20,13 @@ Console.CancelKeyPress += (
 var registry =
     new ClientSessionRegistry();
 
+var roomManager =
+    new RoomManager();
+
 var dispatcher =
-    new LoggingMessageDispatcher();
+    new GameMessageDispatcher(
+        roomManager,
+        registry);
 
 var server =
     new SocketServer(
@@ -36,4 +42,4 @@ catch (OperationCanceledException)
 {
     Console.WriteLine(
         "[SERVER] Stopped.");
-}
+}
