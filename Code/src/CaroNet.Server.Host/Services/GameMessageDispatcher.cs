@@ -4,6 +4,7 @@ using CaroNet.Server.Host.Networking;
 using CaroNet.Shared.Game;
 using CaroNet.Shared.Protocol;
 using CaroNet.Shared.Protocol.Payloads;
+using CaroNet.Storage.Matches;
 
 namespace CaroNet.Server.Host.Services;
 
@@ -12,16 +13,19 @@ public sealed class GameMessageDispatcher : IMessageDispatcher
 {
     private readonly RoomManager _roomManager;
     private readonly ClientSessionRegistry _registry;
+    private readonly IMatchHistoryStore? _matchHistoryStore;
 
 
     private readonly System.Collections.Concurrent.ConcurrentDictionary<Guid, string> _playerNames = new();
 
     public GameMessageDispatcher(
         RoomManager roomManager,
-        ClientSessionRegistry registry)
+        ClientSessionRegistry registry,
+        IMatchHistoryStore? matchHistoryStore = null)
     {
         _roomManager = roomManager;
         _registry = registry;
+        _matchHistoryStore = matchHistoryStore;
     }
 
     public async Task DispatchAsync(
@@ -273,6 +277,7 @@ public sealed class GameMessageDispatcher : IMessageDispatcher
         if (result.Status != GameStatus.Playing)
         {
             await BroadcastGameEndedAsync(room, result.Status, cancellationToken);
+            await SaveMatchHistoryAsync(room, result.Status);
         }
     }
 
@@ -408,5 +413,44 @@ public sealed class GameMessageDispatcher : IMessageDispatcher
         return _playerNames.TryGetValue(sessionId, out string? name)
             ? name
             : "Player";
+    }
+
+    private async Task SaveMatchHistoryAsync(GameRoom room, GameStatus status)
+    {
+        if (_matchHistoryStore is null) return;
+
+        try
+        {
+            string? winnerName = status switch
+            {
+                GameStatus.XWon => room.PlayerXName,
+                GameStatus.OWon => room.PlayerOName,
+                _ => null
+            };
+
+            var moves = room.GetMoveHistory();
+            var now = DateTime.UtcNow;
+
+            var matchMoves = moves.Select((m, i) =>
+                new MatchMoveRecord(i + 1, m.PlayerName, m.Row, m.Col, m.Timestamp))
+                .ToList();
+
+            var record = new MatchRecord(
+                Guid.NewGuid(),
+                room.RoomId,
+                room.PlayerXName ?? "Player X",
+                room.PlayerOName ?? "Player O",
+                winnerName,
+                room.StartedAtUtc,
+                now,
+                matchMoves);
+
+            await _matchHistoryStore.SaveMatchAsync(record);
+            Console.WriteLine($"[HISTORY] Saved match {record.MatchId} in room {room.RoomId}");
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"[HISTORY ERROR] {ex.Message}");
+        }
     }
 }
