@@ -7,10 +7,13 @@ namespace CaroNet.Server.Host.GameRooms;
 public sealed class GameRoom
 {
     private readonly object _lock = new();
+    private readonly List<(string PlayerName, int Row, int Col, DateTime Timestamp)> _moveHistory = [];
 
     public string RoomId { get; } = Guid.NewGuid().ToString("N")[..8];
 
     public CaroGameState GameState { get; } = new(15);
+
+    public DateTime StartedAtUtc { get; private set; }
 
     public ClientSession? PlayerX { get; private set; }
 
@@ -82,7 +85,28 @@ public sealed class GameRoom
             if (symbol is null)
                 return new MoveResult(false, GameState.Status, MoveRejectReason.WrongTurn);
 
-            return GameState.MakeMove(new BoardPosition(row, column), symbol.Value);
+            string playerName = symbol == PlayerSymbol.X ? PlayerXName! : PlayerOName!;
+            var result = GameState.MakeMove(new BoardPosition(row, column), symbol.Value);
+
+            if (result.IsSuccess)
+            {
+                _moveHistory.Add((playerName, row, column, DateTime.UtcNow));
+
+                // Đánh dấu thời gian bắt đầu ở nước đầu tiên
+                if (_moveHistory.Count == 1)
+                    StartedAtUtc = _moveHistory[0].Timestamp;
+            }
+
+            return result;
+        }
+    }
+
+    // Lấy danh sách nước đi để lưu lịch sử.
+    public IReadOnlyList<(string PlayerName, int Row, int Col, DateTime Timestamp)> GetMoveHistory()
+    {
+        lock (_lock)
+        {
+            return _moveHistory.ToList();
         }
     }
 
