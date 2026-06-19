@@ -7,16 +7,13 @@ using CaroNet.Shared.Protocol.Payloads;
 
 namespace CaroNet.Server.Host.Services;
 
-/// <summary>
-/// Dispatches incoming client messages to the RoomManager and broadcasts
-/// responses. Replaces LoggingMessageDispatcher for real gameplay.
-/// </summary>
+// Xử lý message từ client: Hello, CreateRoom, JoinRoom, MakeMove.
 public sealed class GameMessageDispatcher : IMessageDispatcher
 {
     private readonly RoomManager _roomManager;
     private readonly ClientSessionRegistry _registry;
 
-    /// <summary>Maps session ID → player name (set on Hello).</summary>
+
     private readonly System.Collections.Concurrent.ConcurrentDictionary<Guid, string> _playerNames = new();
 
     public GameMessageDispatcher(
@@ -60,9 +57,7 @@ public sealed class GameMessageDispatcher : IMessageDispatcher
         }
     }
 
-    /// <summary>
-    /// Called when a client disconnects. Notifies opponent if in a room.
-    /// </summary>
+    // Xử lý khi client ngắt kết nối.
     public async Task HandleDisconnectAsync(Guid sessionId)
     {
         _playerNames.TryRemove(sessionId, out _);
@@ -70,7 +65,7 @@ public sealed class GameMessageDispatcher : IMessageDispatcher
         GameRoom? room = _roomManager.HandleDisconnect(sessionId);
         if (room is null) return;
 
-        // Notify remaining player that opponent disconnected
+        // Báo đối thủ biết
         foreach (var player in room.GetPlayers())
         {
             try
@@ -86,7 +81,7 @@ public sealed class GameMessageDispatcher : IMessageDispatcher
             }
             catch
             {
-                // Player may also have disconnected
+
             }
         }
     }
@@ -109,7 +104,7 @@ public sealed class GameMessageDispatcher : IMessageDispatcher
             catch { /* use default name */ }
         }
 
-        // Limit player name length (anti-abuse)
+        // Giới hạn tên tránh spam
         if (playerName.Length > 30)
             playerName = playerName[..30];
 
@@ -189,7 +184,7 @@ public sealed class GameMessageDispatcher : IMessageDispatcher
             return;
         }
 
-        // Tell joiner they're in
+
         await session.SendAsync(new MessageEnvelope
         {
             Type = MessageType.RoomJoined,
@@ -203,7 +198,7 @@ public sealed class GameMessageDispatcher : IMessageDispatcher
             })
         }, cancellationToken);
 
-        // If room is full, broadcast GameStarted to both players
+        // Đủ 2 người, bắt đầu ván
         if (room.IsFull)
         {
             await BroadcastGameStartedAsync(room, cancellationToken);
@@ -271,10 +266,10 @@ public sealed class GameMessageDispatcher : IMessageDispatcher
             return;
         }
 
-        // Broadcast updated game state to all players
+
         await BroadcastGameStateAsync(room, cancellationToken);
 
-        // Check if game ended
+
         if (result.Status != GameStatus.Playing)
         {
             await BroadcastGameEndedAsync(room, result.Status, cancellationToken);

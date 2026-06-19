@@ -4,10 +4,7 @@ namespace CaroNet.Shared.Protocol;
 
 public sealed class ProtocolFrameReader
 {
-    // Must match ProtocolFrameCodec.MaxPayloadLength so the reader rejects
-    // oversized frames as early as the length header is received, preventing
-    // unbounded memory growth when a buggy or malicious client sends a huge
-    // length value before any payload bytes arrive.
+    // Giới hạn kích thước frame, khớp với ProtocolFrameCodec.MaxPayloadLength.
     private const int MaxPayloadLength = 1024 * 1024; // 1 MB
 
     private readonly List<byte> _buffer = [];

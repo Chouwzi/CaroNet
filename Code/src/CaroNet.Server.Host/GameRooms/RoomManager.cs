@@ -3,26 +3,16 @@ using CaroNet.Server.Host.Networking;
 
 namespace CaroNet.Server.Host.GameRooms;
 
-/// <summary>
-/// Manages all active game rooms. Thread-safe via ConcurrentDictionary.
-/// Limits max rooms to prevent resource exhaustion (DoS protection).
-/// </summary>
+// Quản lý danh sách phòng. Giới hạn MaxRooms để tránh tràn tài nguyên.
 public sealed class RoomManager
 {
-    /// <summary>Max rooms allowed at any time (DoS guard).</summary>
     private const int MaxRooms = 100;
 
     private readonly ConcurrentDictionary<string, GameRoom> _rooms = new();
-
-    /// <summary>Maps session ID → room ID for fast lookup on disconnect.</summary>
     private readonly ConcurrentDictionary<Guid, string> _sessionRoomMap = new();
 
     public int RoomCount => _rooms.Count;
 
-    /// <summary>
-    /// Creates a new room and adds the creator as Player X.
-    /// Returns null if max rooms exceeded.
-    /// </summary>
     public GameRoom? CreateRoom(ClientSession session, string playerName)
     {
         if (_rooms.Count >= MaxRooms)
@@ -37,15 +27,11 @@ public sealed class RoomManager
         _sessionRoomMap[session.Id] = room.RoomId;
 
         Console.WriteLine(
-            $"[ROOM] Created room {room.RoomId} by {playerName} ({session.Id})");
+            $"[ROOM] Created {room.RoomId} by {playerName}");
 
         return room;
     }
 
-    /// <summary>
-    /// Joins an existing room as Player O.
-    /// Returns (room, assignedSymbol) or (null, null) on failure.
-    /// </summary>
     public (GameRoom? room, Shared.Game.PlayerSymbol? symbol) JoinRoom(
         ClientSession session, string roomId, string playerName)
     {
@@ -59,23 +45,17 @@ public sealed class RoomManager
         _sessionRoomMap[session.Id] = roomId;
 
         Console.WriteLine(
-            $"[ROOM] {playerName} ({session.Id}) joined room {roomId} as {symbol}");
+            $"[ROOM] {playerName} joined {roomId} as {symbol}");
 
         return (room, symbol);
     }
 
-    /// <summary>
-    /// Gets a room by ID.
-    /// </summary>
     public GameRoom? GetRoom(string roomId)
     {
         _rooms.TryGetValue(roomId, out GameRoom? room);
         return room;
     }
 
-    /// <summary>
-    /// Gets the room a session is currently in.
-    /// </summary>
     public GameRoom? GetRoomBySession(Guid sessionId)
     {
         if (_sessionRoomMap.TryGetValue(sessionId, out string? roomId))
@@ -83,9 +63,7 @@ public sealed class RoomManager
         return null;
     }
 
-    /// <summary>
-    /// Handles a player disconnecting: removes from room, cleans up empty rooms.
-    /// </summary>
+    // Xử lý ngắt kết nối: xóa khỏi phòng, dọn phòng trống.
     public GameRoom? HandleDisconnect(Guid sessionId)
     {
         if (!_sessionRoomMap.TryRemove(sessionId, out string? roomId))
@@ -96,15 +74,10 @@ public sealed class RoomManager
 
         room.RemovePlayer(sessionId);
 
-        Console.WriteLine(
-            $"[ROOM] Session {sessionId} left room {roomId}");
-
-        // Clean up empty rooms
         if (room.IsEmpty)
         {
             _rooms.TryRemove(roomId, out _);
-            Console.WriteLine(
-                $"[ROOM] Room {roomId} removed (empty)");
+            Console.WriteLine($"[ROOM] {roomId} removed (empty)");
         }
 
         return room;
