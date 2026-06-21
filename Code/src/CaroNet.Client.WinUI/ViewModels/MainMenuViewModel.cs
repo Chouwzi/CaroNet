@@ -18,6 +18,7 @@ public sealed class MainMenuViewModel : INotifyPropertyChanged
     private string _connectionStatus = "Chưa kết nối";
     private string _playerName = string.Empty;
     private string _roomId = string.Empty;
+    private bool _isConnected;
 
     public MainMenuViewModel(IGameClientService gameClient)
     {
@@ -57,6 +58,7 @@ public sealed class MainMenuViewModel : INotifyPropertyChanged
             await _gameClient.ConnectAsync(
                 new ConnectionRequest(PlayerName, DefaultHost, DefaultPort), CancellationToken.None);
             ConnectionStatus = $"Đã connect tới server mặc định {DefaultHost}:{DefaultPort}";
+            _isConnected = true;
             return true;
         }
         catch (Exception ex)
@@ -64,6 +66,13 @@ public sealed class MainMenuViewModel : INotifyPropertyChanged
             ConnectionStatus = ex.Message;
             return false;
         }
+    }
+
+    // Tự connect nếu chưa có kết nối.
+    private async Task<bool> EnsureConnectedAsync()
+    {
+        if (_isConnected) return true;
+        return await ConnectAsync();
     }
 
     public async Task<bool> CreateRoomAsync()
@@ -78,6 +87,8 @@ public sealed class MainMenuViewModel : INotifyPropertyChanged
 
         try
         {
+            if (!await EnsureConnectedAsync()) return false;
+
             GameViewState state = await _gameClient.CreateRoomAsync(CancellationToken.None);
             ConnectionStatus = state.ConnectionStatus;
             return !string.IsNullOrWhiteSpace(state.RoomId);
@@ -108,6 +119,8 @@ public sealed class MainMenuViewModel : INotifyPropertyChanged
 
         try
         {
+            if (!await EnsureConnectedAsync()) return false;
+
             GameViewState state = await _gameClient.JoinRoomAsync(RoomId, CancellationToken.None);
             ConnectionStatus = state.ConnectionStatus;
             return !string.IsNullOrWhiteSpace(state.RoomId);
