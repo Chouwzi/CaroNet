@@ -14,6 +14,7 @@ public sealed class GameViewModel : INotifyPropertyChanged
     public const int BoardSize = 15;
 
     private readonly IGameClientService _gameClient;
+    private readonly SynchronizationContext? _syncContext;
     private string _connectionStatus = "Chưa kết nối server";
     private string _currentTurnSymbol = "X";
     private string _playerName = "Player";
@@ -24,6 +25,7 @@ public sealed class GameViewModel : INotifyPropertyChanged
     public GameViewModel(IGameClientService gameClient)
     {
         _gameClient = gameClient;
+        _syncContext = SynchronizationContext.Current;
         _gameClient.GameStateUpdated += GameClient_GameStateUpdated;
 
         for (var row = 0; row < BoardSize; row++)
@@ -84,7 +86,16 @@ public sealed class GameViewModel : INotifyPropertyChanged
 
     private void GameClient_GameStateUpdated(object? sender, GameViewState state)
     {
-        ApplyState(state);
+        // GameStateUpdated fire từ background receive thread,
+        // phải marshal về UI thread.
+        if (_syncContext is not null)
+        {
+            _syncContext.Post(_ => ApplyState(state), null);
+        }
+        else
+        {
+            ApplyState(state);
+        }
     }
 
     private void ApplyState(GameViewState state)
