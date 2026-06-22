@@ -1,3 +1,4 @@
+using System;
 using System.Collections.Generic;
 using System.Collections.ObjectModel;
 using System.ComponentModel;
@@ -15,6 +16,7 @@ public sealed class GameViewModel : INotifyPropertyChanged
 
     private readonly IGameClientService _gameClient;
     private readonly SynchronizationContext? _syncContext;
+    private Action<Action>? _dispatchToUI;
     private string _connectionStatus = "Chưa kết nối server";
     private string _currentTurnSymbol = "X";
     private string _playerName = "Player";
@@ -42,6 +44,15 @@ public sealed class GameViewModel : INotifyPropertyChanged
     public event PropertyChangedEventHandler? PropertyChanged;
 
     public ObservableCollection<BoardCellViewModel> BoardCells { get; } = [];
+
+    /// <summary>
+    /// GamePage gọi method này sau khi InitializeComponent() để đảm bảo
+    /// DispatcherQueue đã sẵn sàng cho UI thread dispatching.
+    /// </summary>
+    public void SetDispatcher(Action<Action> dispatcher)
+    {
+        _dispatchToUI = dispatcher;
+    }
 
     public string RoomId
     {
@@ -88,7 +99,12 @@ public sealed class GameViewModel : INotifyPropertyChanged
     {
         // GameStateUpdated fire từ background receive thread,
         // phải marshal về UI thread.
-        if (_syncContext is not null)
+        // Ưu tiên DispatcherQueue (WinUI 3), fallback SynchronizationContext.
+        if (_dispatchToUI is not null)
+        {
+            _dispatchToUI(() => ApplyState(state));
+        }
+        else if (_syncContext is not null)
         {
             _syncContext.Post(_ => ApplyState(state), null);
         }
