@@ -8,28 +8,15 @@ Project dùng C#, .NET 10 LTS, WinUI 3 / Windows App SDK, raw `System.Net.Socket
 
 ### Đã hoàn thành ✅
 
-- [x] Tạo `.gitignore` cho .NET / Visual Studio / WinUI / MSIX.
-- [x] Sắp xếp solution theo yêu cầu môn học: code và tài liệu kỹ thuật nằm trong `Code/`.
-- [x] Tách project nền: client WinUI, server host, shared library, storage library.
-- [x] Thêm test project cho `CaroNet.Shared`.
-- [x] Rule engine Caro: kiểm tra thắng 5 quân liên tiếp theo 4 hướng.
-- [x] Raw TCP server bằng `System.Net.Sockets.Socket` với async I/O.
-- [x] Raw TCP client bằng `System.Net.Sockets.Socket`.
-- [x] Length-prefix frame reader/writer (4 bytes big-endian + UTF-8 JSON).
-- [x] Serialize/deserialize JSON bằng `System.Text.Json` với `[JsonPropertyName]`.
-- [x] Message dispatcher ở server phân phối message theo `MessageType`.
-- [x] Tạo phòng (`CreateRoom`), join phòng (`JoinRoom`).
-- [x] Server validate nước đi: kiểm tra lượt, ô trống, in-bounds.
-- [x] Broadcast `GameStateUpdated` sau mỗi nước đi hợp lệ.
-- [x] Broadcast `GameEnded` khi thắng/thua/hòa.
-- [x] WinUI 3 MVVM: MainMenuPage, GamePage, GameViewModel.
-- [x] Bàn cờ 20×20 hiển thị đúng X/O với `DispatcherQueue` thread-safe.
-- [x] SQLite match history storage (`IMatchHistoryStore`, `IPlayerRecordStore`).
-- [x] Unit test cho rule engine, protocol parser, payload serialization.
-- [x] Demo 2 client chơi hết một ván qua TCP trên cùng máy.
-- [x] Fix JSON case-sensitivity (`System.Text.Json` PascalCase ↔ camelCase).
-- [x] Fix UI board invisible (WinUI `SetBinding` cần `BindingMode.OneWay`).
-- [x] Fix ViewModel lifecycle (`InitializeComponent` trước `ViewModel` init).
+- [x] Solution structure: client WinUI, server host, shared library, storage, test project
+- [x] Rule engine Caro 20×20: thắng 5 quân liên tiếp (4 hướng)
+- [x] Raw TCP server/client bằng `System.Net.Sockets.Socket` (async I/O)
+- [x] Protocol: JSON length-prefix framing (4 bytes big-endian + UTF-8)
+- [x] Server: message dispatcher, tạo/join phòng, validate nước đi, broadcast state
+- [x] WinUI 3 MVVM: MainMenuPage, GamePage, bàn cờ hiển thị X/O
+- [x] SQLite lưu lịch sử trận đấu và thống kê người chơi
+- [x] Unit test: rule engine, protocol parser, payload serialization
+- [x] Demo 2 client chơi hết 1 ván qua TCP trên cùng máy
 
 ### Đang phát triển 🚧
 
