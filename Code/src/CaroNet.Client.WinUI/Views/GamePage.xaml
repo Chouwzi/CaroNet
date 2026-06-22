@@ -18,6 +18,7 @@
             <Setter Property="BorderThickness" Value="0,0,1,1"/>
             <Setter Property="BorderBrush" Value="{ThemeResource CardStrokeColorDefaultBrush}"/>
             <Setter Property="Background" Value="{ThemeResource LayerFillColorDefaultBrush}"/>
+            <Setter Property="Foreground" Value="{ThemeResource TextFillColorPrimaryBrush}"/>
             <Setter Property="CornerRadius" Value="0"/>
             <Setter Property="HorizontalAlignment" Value="Stretch"/>
             <Setter Property="VerticalAlignment" Value="Stretch"/>
