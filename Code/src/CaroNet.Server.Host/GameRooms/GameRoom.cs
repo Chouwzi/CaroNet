@@ -9,7 +9,7 @@ public sealed class GameRoom
     private readonly object _lock = new();
     private readonly List<(string PlayerName, int Row, int Col, DateTime Timestamp)> _moveHistory = [];
 
-    public string RoomId { get; } = Guid.NewGuid().ToString("N")[..8];
+    public string RoomId { get; } = Random.Shared.Next(100000, 999999).ToString();
 
     public CaroGameState GameState { get; } = new(15);
 

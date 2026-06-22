@@ -168,7 +168,7 @@ public sealed class SocketGameClientService : IGameClientService, IAsyncDisposab
             switch (args.Message.Type)
             {
                 case MessageType.HelloAccepted:
-                    UpdateConnectionStatus("Server đã chấp nhận kết nối.");
+                    ApplyHelloAccepted(args.Message);
                     break;
                 case MessageType.RoomJoined:
                 case MessageType.GameStarted:
@@ -192,6 +192,21 @@ public sealed class SocketGameClientService : IGameClientService, IAsyncDisposab
         }
     }
 
+    private void ApplyHelloAccepted(MessageEnvelope message)
+    {
+        lock (_stateLock)
+        {
+            _playerId = FirstNonEmpty(
+                GetString(message.Payload, "playerId"),
+                message.PlayerId,
+                _playerId);
+            _connectionStatus = "Server đã chấp nhận kết nối.";
+            _serverError = string.Empty;
+        }
+
+        PublishState();
+    }
+
     private void ApplyRoomJoined(MessageEnvelope message)
     {
         lock (_stateLock)
@@ -206,12 +221,20 @@ public sealed class SocketGameClientService : IGameClientService, IAsyncDisposab
                 _playerId);
             _playerSymbol = FirstNonEmpty(
                 GetString(message.Payload, "playerSymbol"),
+                GetString(message.Payload, "yourSymbol"),
                 GetString(message.Payload, "symbol"),
                 _playerSymbol);
             _connectionStatus = string.IsNullOrWhiteSpace(_roomId)
                 ? "Đã vào phòng"
                 : $"Đã vào phòng {_roomId}";
             _serverError = string.Empty;
+
+            // GameStarted gửi kèm board và lượt đi
+            if (TryReadBoard(message.Payload, out string[,]? board))
+            {
+                _board = board!;
+            }
+            _currentTurnSymbol = ResolveCurrentTurnSymbol(message.Payload);
         }
 
         GameViewState state = PublishState();
