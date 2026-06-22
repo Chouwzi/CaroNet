@@ -24,7 +24,7 @@ public sealed class SocketGameClientService : IGameClientService, IAsyncDisposab
     private string _playerSymbol = "?";
     private string _roomId = string.Empty;
     private string _serverError = string.Empty;
-    private string[,] _board = new string[BoardSize, BoardSize];
+    private string[,] _board = InitEmptyBoard();
 
     public SocketGameClientService(IClientConnection connection)
     {
@@ -32,6 +32,15 @@ public sealed class SocketGameClientService : IGameClientService, IAsyncDisposab
         _connection.MessageReceived += Connection_MessageReceived;
         _connection.ConnectionError += Connection_ConnectionError;
         _connection.Disconnected += Connection_Disconnected;
+    }
+
+    private static string[,] InitEmptyBoard()
+    {
+        var board = new string[BoardSize, BoardSize];
+        for (int r = 0; r < BoardSize; r++)
+            for (int c = 0; c < BoardSize; c++)
+                board[r, c] = string.Empty;
+        return board;
     }
 
     public event EventHandler<GameViewState>? GameStateUpdated;
@@ -276,6 +285,11 @@ public sealed class SocketGameClientService : IGameClientService, IAsyncDisposab
     {
         lock (_stateLock)
         {
+            if (TryReadBoard(message.Payload, out string[,]? board))
+            {
+                _board = board!;
+            }
+
             _serverError = FirstNonEmpty(
                 GetString(message.Payload, "message"),
                 "Ván đấu đã kết thúc.");

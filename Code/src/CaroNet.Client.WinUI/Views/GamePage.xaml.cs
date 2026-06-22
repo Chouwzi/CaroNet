@@ -8,11 +8,22 @@ namespace CaroNet.Client.WinUI.Views;
 
 public sealed partial class GamePage : Page
 {
-    private readonly GameViewModel _viewModel = new(AppServices.GameClient);
+    private readonly GameViewModel _viewModel;
 
     public GamePage()
     {
         InitializeComponent();
+
+        // Khởi tạo ViewModel SAU InitializeComponent() để đảm bảo
+        // SynchronizationContext.Current và DispatcherQueue đã sẵn sàng.
+        _viewModel = new GameViewModel(AppServices.GameClient);
+
+        // Inject DispatcherQueue vào ViewModel — cách chính thức WinUI 3
+        // để marshal background thread callbacks về UI thread.
+        _viewModel.SetDispatcher(action => DispatcherQueue.TryEnqueue(
+            Microsoft.UI.Dispatching.DispatcherQueuePriority.Normal,
+            () => action()));
+
         DataContext = _viewModel;
         BuildBoard();
     }
@@ -37,7 +48,11 @@ public sealed partial class GamePage : Page
                 Style = (Style)Resources["BoardCellButtonStyle"],
             };
 
-            button.SetBinding(ContentProperty, new Binding { Path = new PropertyPath(nameof(BoardCellViewModel.Mark)) });
+            button.SetBinding(ContentControl.ContentProperty, new Binding
+            {
+                Path = new PropertyPath(nameof(BoardCellViewModel.Mark)),
+                Mode = BindingMode.OneWay,
+            });
             button.Click += BoardCellButton_Click;
 
             Grid.SetRow(button, cell.Row);
