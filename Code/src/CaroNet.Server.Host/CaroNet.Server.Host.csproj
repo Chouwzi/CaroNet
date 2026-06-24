@@ -1,6 +1,11 @@
 ﻿<Project Sdk="Microsoft.NET.Sdk">
 
   <ItemGroup>
+    <PackageReference Include="SourceGear.sqlite3" Version="3.50.4.5" />
+    <PackageReference Include="SQLitePCLRaw.lib.e_sqlite3" Version="2.1.11" />
+  </ItemGroup>
+
+  <ItemGroup>
     <ProjectReference Include="..\CaroNet.Shared\CaroNet.Shared.csproj" />
     <ProjectReference Include="..\CaroNet.Storage\CaroNet.Storage.csproj" />
   </ItemGroup>
