@@ -8,6 +8,6 @@ public static class AppServices
         new SocketGameClientService(new SocketClientConnection());
 
     public static IMatchHistoryStore MatchHistoryStore { get; } =
-        new SqliteMatchHistoryStore(
-            @"C:\Users\Dell\source\repos\Chouwzi\CaroNet\Code\caronet.db");
+    new SqliteMatchHistoryStore(
+        @"C:\Users\Dell\source\repos\Chouwzi\CaroNet\Code\src\CaroNet.Server.Host\caronet.db");
 }

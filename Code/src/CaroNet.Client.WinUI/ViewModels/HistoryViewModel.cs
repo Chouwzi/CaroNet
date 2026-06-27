@@ -14,8 +14,9 @@ public sealed class HistoryViewModel
     {
         Matches.Clear();
 
-        var matches =
-            await AppServices.MatchHistoryStore.GetAllMatchesAsync();
+        var matches = await AppServices.MatchHistoryStore.GetAllMatchesAsync();
+
+        System.Diagnostics.Debug.WriteLine(matches.Count);
 
         foreach (var match in matches)
         {
