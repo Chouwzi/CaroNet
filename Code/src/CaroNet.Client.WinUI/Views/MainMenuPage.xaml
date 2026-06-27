@@ -74,7 +74,16 @@
                            FontSize="17"
                            FontWeight="SemiBold"/>
             </Button>
-            
+            <Button x:Name="HistoryButton"
+                    Height="52"
+                    HorizontalAlignment="Stretch"
+                    CornerRadius="12"
+                    Click="HistoryButton_Click">
+                <TextBlock Text="Lịch sử trận đấu"
+                           FontSize="17"
+                           FontWeight="SemiBold"/>
+            </Button>
+
             <TextBlock x:Name="ConnectionStatusText"
                        Text="{Binding ConnectionStatus}"
                        HorizontalAlignment="Center"

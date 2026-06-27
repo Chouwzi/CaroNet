@@ -1,0 +1,71 @@
+<?xml version="1.0" encoding="utf-8"?>
+<Page
+    x:Class="CaroNet.Client.WinUI.Views.HistoryPage"
+    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    xmlns:local="using:CaroNet.Client.WinUI.Views"
+    xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+    xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+    mc:Ignorable="d">
+
+    <Grid Padding="20">
+
+        <StackPanel Spacing="12">
+
+            <Button
+                Content="← Quay lại"
+                HorizontalAlignment="Left"
+                Click="BackButton_Click"/>
+
+            <TextBlock
+                Text="Match History"
+                FontSize="28"
+                FontWeight="Bold"/>
+
+            <ProgressRing
+                IsActive="False"
+                Width="40"
+                Height="40"/>
+
+            <TextBlock
+                Text="Chưa có trận đấu nào."
+                HorizontalAlignment="Center"/>
+
+            <ListView ItemsSource="{Binding Matches}">
+                <ListView.ItemTemplate>
+                    <DataTemplate>
+                        <Border Margin="0,0,0,10"
+                    Padding="12"
+                    BorderThickness="1"
+                    CornerRadius="8">
+
+                            <StackPanel Spacing="6">
+
+                                <TextBlock
+                        Text="{Binding PlayerX}"
+                        FontWeight="Bold"/>
+
+                                <TextBlock
+                        Text="{Binding PlayerO}"/>
+
+                                <TextBlock
+                        Text="{Binding Winner}"/>
+
+                                <TextBlock
+                        Text="{Binding PlayedAt}"/>
+
+                                <TextBlock
+                        Text="{Binding MoveCount}"/>
+
+                            </StackPanel>
+
+                        </Border>
+                    </DataTemplate>
+                </ListView.ItemTemplate>
+            </ListView>
+
+        </StackPanel>
+
+    </Grid>
+
+</Page>

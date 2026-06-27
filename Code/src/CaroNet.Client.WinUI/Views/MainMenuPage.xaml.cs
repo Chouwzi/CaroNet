@@ -35,4 +35,8 @@ public sealed partial class MainMenuPage : Page
             Frame.Navigate(typeof(GamePage));
         }
     }
+    private void HistoryButton_Click(object sender, RoutedEventArgs e)
+    {
+        Frame.Navigate(typeof(HistoryPage));
+    }
 }
