@@ -96,7 +96,9 @@ public sealed class GameViewModel : INotifyPropertyChanged
             if (string.IsNullOrEmpty(PlayerSymbol) || string.IsNullOrEmpty(RoomId))
                 return "Đang chờ đối thủ...";
 
-            return IsMyTurn ? "🎯 Lượt của bạn!" : "⏳ Đợi đối thủ...";
+            return IsMyTurn
+                ? "🎯 Lượt của bạn!"
+                : "⏳ Đợi đối thủ...";
         }
     }
 
