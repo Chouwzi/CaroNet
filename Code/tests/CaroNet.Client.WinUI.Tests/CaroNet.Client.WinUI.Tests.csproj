@@ -21,6 +21,7 @@
   </ItemGroup>
 
   <ItemGroup>
+    <ProjectReference Include="..\..\src\CaroNet.Client.WinUI\CaroNet.Client.WinUI.csproj" />
     <ProjectReference Include="..\..\src\CaroNet.Shared\CaroNet.Shared.csproj" />
   </ItemGroup>
 

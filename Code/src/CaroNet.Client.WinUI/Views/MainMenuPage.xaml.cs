@@ -7,20 +7,32 @@ namespace CaroNet.Client.WinUI.Views;
 
 public sealed partial class MainMenuPage : Page
 {
-    private readonly MainMenuViewModel _viewModel = new(AppServices.GameClient);
+    private readonly MainMenuViewModel _viewModel =
+        new(AppServices.GameClient);
 
     public MainMenuPage()
     {
         InitializeComponent();
         DataContext = _viewModel;
+
+        Loaded += MainMenuPage_Loaded;
     }
 
-    private async void ConnectButton_Click(object sender, RoutedEventArgs e)
+    private async void MainMenuPage_Loaded(object sender, RoutedEventArgs e)
+    {
+        await _viewModel.LoadBestRecordsAsync();
+    }
+
+    private async void ConnectButton_Click(
+        object sender,
+        RoutedEventArgs e)
     {
         await _viewModel.ConnectAsync();
     }
 
-    private async void CreateRoomButton_Click(object sender, RoutedEventArgs e)
+    private async void CreateRoomButton_Click(
+        object sender,
+        RoutedEventArgs e)
     {
         if (await _viewModel.CreateRoomAsync())
         {
@@ -28,15 +40,27 @@ public sealed partial class MainMenuPage : Page
         }
     }
 
-    private async void JoinRoomButton_Click(object sender, RoutedEventArgs e)
+    private async void JoinRoomButton_Click(
+        object sender,
+        RoutedEventArgs e)
     {
         if (await _viewModel.JoinRoomAsync())
         {
             Frame.Navigate(typeof(GamePage));
         }
     }
-    private void HistoryButton_Click(object sender, RoutedEventArgs e)
+
+    private void HistoryButton_Click(
+        object sender,
+        RoutedEventArgs e)
     {
         Frame.Navigate(typeof(HistoryPage));
+    }
+
+    private void BestRecordButton_Click(object sender, RoutedEventArgs e)
+    {
+        // Thay vì ẩn/hiện tại chỗ, lệnh này sẽ chuyển hẳn sang trang BestRecordPage
+        // Truyền kèm theo _viewModel để trang mới lấy được danh sách BestRecords đã load
+        Frame.Navigate(typeof(BestRecordPage), _viewModel);
     }
 }

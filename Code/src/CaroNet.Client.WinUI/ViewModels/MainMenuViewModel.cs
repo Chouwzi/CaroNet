@@ -1,11 +1,14 @@
 using System;
 using System.Collections.Generic;
+using System.Collections.ObjectModel;
 using System.ComponentModel;
 using System.Runtime.CompilerServices;
 using System.Threading;
 using System.Threading.Tasks;
+using CaroNet.Client.WinUI.Models;
 using CaroNet.Client.WinUI.Services;
 using CaroNet.Client.WinUI.Validation;
+using System.Linq;
 
 namespace CaroNet.Client.WinUI.ViewModels;
 
@@ -15,6 +18,7 @@ public sealed class MainMenuViewModel : INotifyPropertyChanged
     private const int DefaultPort = 5000;
 
     private readonly IGameClientService _gameClient;
+
     private string _connectionStatus = "Chưa kết nối";
     private string _playerName = string.Empty;
     private string _roomId = string.Empty;
@@ -26,6 +30,42 @@ public sealed class MainMenuViewModel : INotifyPropertyChanged
     }
 
     public event PropertyChangedEventHandler? PropertyChanged;
+
+    // ================= BEST RECORD =================
+
+    public ObservableCollection<BestRecordItem> BestRecords { get; }
+        = new();
+
+    public async Task LoadBestRecordsAsync()
+    {
+        BestRecords.Clear();
+
+        var matches =
+            await AppServices.MatchHistoryStore.GetAllMatchesAsync();
+
+        var ranking = matches
+            .Where(match => !string.IsNullOrWhiteSpace(match.WinnerName))
+            .GroupBy(match => match.WinnerName!)
+            .Select(group => new BestRecordItem
+            {
+                PlayerName = group.Key,
+                Wins = group.Count()
+            })
+            .OrderByDescending(item => item.Wins)
+            .ThenBy(item => item.PlayerName)
+            .Take(10)
+            .ToList();
+
+        int rank = 1;
+
+        foreach (var item in ranking)
+        {
+            item.Rank = rank++;
+            BestRecords.Add(item);
+        }
+    }
+
+    // ===============================================
 
     public string PlayerName
     {
@@ -48,17 +88,27 @@ public sealed class MainMenuViewModel : INotifyPropertyChanged
     public async Task<bool> ConnectAsync()
     {
         string? playerNameError = PlayerNameValidator.Validate(PlayerName);
+
         if (playerNameError != null)
         {
             ConnectionStatus = playerNameError;
             return false;
         }
+
         try
         {
             await _gameClient.ConnectAsync(
-                new ConnectionRequest(PlayerName, DefaultHost, DefaultPort), CancellationToken.None);
-            ConnectionStatus = $"Đã connect tới server mặc định {DefaultHost}:{DefaultPort}";
+                new ConnectionRequest(
+                    PlayerName,
+                    DefaultHost,
+                    DefaultPort),
+                CancellationToken.None);
+
+            ConnectionStatus =
+                $"Đã connect tới server mặc định {DefaultHost}:{DefaultPort}";
+
             _isConnected = true;
+
             return true;
         }
         catch (Exception ex)
@@ -68,16 +118,20 @@ public sealed class MainMenuViewModel : INotifyPropertyChanged
         }
     }
 
-    // Tự connect nếu chưa có kết nối.
     private async Task<bool> EnsureConnectedAsync()
     {
-        if (_isConnected) return true;
+        if (_isConnected)
+        {
+            return true;
+        }
+
         return await ConnectAsync();
     }
 
     public async Task<bool> CreateRoomAsync()
     {
-        string? playerNameError = PlayerNameValidator.Validate(PlayerName);
+        string? playerNameError =
+            PlayerNameValidator.Validate(PlayerName);
 
         if (playerNameError != null)
         {
@@ -87,10 +141,17 @@ public sealed class MainMenuViewModel : INotifyPropertyChanged
 
         try
         {
-            if (!await EnsureConnectedAsync()) return false;
+            if (!await EnsureConnectedAsync())
+            {
+                return false;
+            }
 
-            GameViewState state = await _gameClient.CreateRoomAsync(CancellationToken.None);
+            GameViewState state =
+                await _gameClient.CreateRoomAsync(
+                    CancellationToken.None);
+
             ConnectionStatus = state.ConnectionStatus;
+
             return !string.IsNullOrWhiteSpace(state.RoomId);
         }
         catch (Exception ex)
@@ -102,8 +163,11 @@ public sealed class MainMenuViewModel : INotifyPropertyChanged
 
     public async Task<bool> JoinRoomAsync()
     {
-        string? playerNameError = PlayerNameValidator.Validate(PlayerName);
-        string? roomIdError = RoomIdValidator.Validate(RoomId);
+        string? playerNameError =
+            PlayerNameValidator.Validate(PlayerName);
+
+        string? roomIdError =
+            RoomIdValidator.Validate(RoomId);
 
         if (playerNameError != null)
         {
@@ -119,10 +183,18 @@ public sealed class MainMenuViewModel : INotifyPropertyChanged
 
         try
         {
-            if (!await EnsureConnectedAsync()) return false;
+            if (!await EnsureConnectedAsync())
+            {
+                return false;
+            }
 
-            GameViewState state = await _gameClient.JoinRoomAsync(RoomId, CancellationToken.None);
+            GameViewState state =
+                await _gameClient.JoinRoomAsync(
+                    RoomId,
+                    CancellationToken.None);
+
             ConnectionStatus = state.ConnectionStatus;
+
             return !string.IsNullOrWhiteSpace(state.RoomId);
         }
         catch (Exception ex)
@@ -132,7 +204,10 @@ public sealed class MainMenuViewModel : INotifyPropertyChanged
         }
     }
 
-    private void SetProperty<T>(ref T field, T value, [CallerMemberName] string? propertyName = null)
+    private void SetProperty<T>(
+        ref T field,
+        T value,
+        [CallerMemberName] string? propertyName = null)
     {
         if (EqualityComparer<T>.Default.Equals(field, value))
         {
@@ -140,6 +215,9 @@ public sealed class MainMenuViewModel : INotifyPropertyChanged
         }
 
         field = value;
-        PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(propertyName));
+
+        PropertyChanged?.Invoke(
+            this,
+            new PropertyChangedEventArgs(propertyName));
     }
 }
