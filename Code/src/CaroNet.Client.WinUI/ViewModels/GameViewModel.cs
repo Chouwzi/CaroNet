@@ -17,6 +17,7 @@ public sealed class GameViewModel : INotifyPropertyChanged
     private readonly IGameClientService _gameClient;
     private readonly SynchronizationContext? _syncContext;
     private Action<Action>? _dispatchToUI;
+
     private string _connectionStatus = "Chưa kết nối server";
     private string _currentTurnSymbol = "X";
     private string _playerName = "Player";
@@ -45,10 +46,6 @@ public sealed class GameViewModel : INotifyPropertyChanged
 
     public ObservableCollection<BoardCellViewModel> BoardCells { get; } = [];
 
-    /// <summary>
-    /// GamePage gọi method này sau khi InitializeComponent() để đảm bảo
-    /// DispatcherQueue đã sẵn sàng cho UI thread dispatching.
-    /// </summary>
     public void SetDispatcher(Action<Action> dispatcher)
     {
         _dispatchToUI = dispatcher;
@@ -90,6 +87,19 @@ public sealed class GameViewModel : INotifyPropertyChanged
         private set => SetProperty(ref _serverError, value);
     }
 
+    public bool IsMyTurn => CurrentTurnSymbol == PlayerSymbol && !string.IsNullOrEmpty(PlayerSymbol);
+
+    public string TurnMessage
+    {
+        get
+        {
+            if (string.IsNullOrEmpty(PlayerSymbol) || string.IsNullOrEmpty(RoomId))
+                return "Đang chờ đối thủ...";
+
+            return IsMyTurn ? "🎯 Lượt của bạn!" : "⏳ Đợi đối thủ...";
+        }
+    }
+
     public async Task MakeMoveAsync(int row, int column)
     {
         await _gameClient.MakeMoveAsync(new BoardPosition(row, column), CancellationToken.None);
@@ -97,9 +107,6 @@ public sealed class GameViewModel : INotifyPropertyChanged
 
     private void GameClient_GameStateUpdated(object? sender, GameViewState state)
     {
-        // GameStateUpdated fire từ background receive thread,
-        // phải marshal về UI thread.
-        // Ưu tiên DispatcherQueue (WinUI 3), fallback SynchronizationContext.
         if (_dispatchToUI is not null)
         {
             _dispatchToUI(() => ApplyState(state));
@@ -127,6 +134,9 @@ public sealed class GameViewModel : INotifyPropertyChanged
         {
             BoardCells[cellState.Row * BoardSize + cellState.Column].Mark = cellState.Mark;
         }
+
+        OnPropertyChanged(nameof(IsMyTurn));
+        OnPropertyChanged(nameof(TurnMessage));
     }
 
     private void SetProperty<T>(ref T field, T value, [CallerMemberName] string? propertyName = null)
@@ -137,6 +147,11 @@ public sealed class GameViewModel : INotifyPropertyChanged
         }
 
         field = value;
+        PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(propertyName));
+    }
+
+    private void OnPropertyChanged([CallerMemberName] string? propertyName = null)
+    {
         PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(propertyName));
     }
 }
@@ -154,7 +169,6 @@ public sealed class BoardCellViewModel : INotifyPropertyChanged
     public event PropertyChangedEventHandler? PropertyChanged;
 
     public int Row { get; }
-
     public int Column { get; }
 
     public string Mark
