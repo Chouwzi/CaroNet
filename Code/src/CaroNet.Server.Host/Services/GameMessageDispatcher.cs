@@ -108,9 +108,7 @@ public sealed class GameMessageDispatcher : IMessageDispatcher
             catch { /* use default name */ }
         }
 
-        // Giới hạn tên tránh spam
-        if (playerName.Length > 30)
-            playerName = playerName[..30];
+        playerName = CaroNet.Server.Host.Validation.PlayerNameSanitizer.Sanitize(playerName);
 
         _playerNames[session.Id] = playerName;
 
