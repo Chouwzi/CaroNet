@@ -5,6 +5,7 @@ using System.ComponentModel;
 using System.Runtime.CompilerServices;
 using System.Threading;
 using System.Threading.Tasks;
+using CaroNet.Client.WinUI.Models;
 using CaroNet.Client.WinUI.Services;
 using CaroNet.Client.WinUI.Validation;
 using System.Linq;
