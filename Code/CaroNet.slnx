@@ -19,10 +19,8 @@
     <Project Path="tests/CaroNet.Client.WinUI.Tests/CaroNet.Client.WinUI.Tests.csproj">
       <Platform Solution="*|x64" Project="x64" />
     </Project>
-    <Project Path="tests/CaroNet.Server.Host.Tests/CaroNet.Server.Host.Tests.csproj">
-      <Build Solution="Debug|*" Project="false" />
-    </Project>
-    <Project Path="tests/CaroNet.Shared.Tests/CaroNet.Shared.Tests.csproj" />
     <Project Path="tests/CaroNet.Storage.Tests/CaroNet.Storage.Tests.csproj" />
+    <Project Path="tests/CaroNet.Shared.Tests/CaroNet.Shared.Tests.csproj" />
+    <Project Path="tests/CaroNet.Server.Host.Tests/CaroNet.Server.Host.Tests.csproj" />
   </Folder>
 </Solution>
