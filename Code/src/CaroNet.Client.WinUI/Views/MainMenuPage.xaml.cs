@@ -64,10 +64,7 @@ public sealed partial class MainMenuPage : Page
         }
     
 
-        // Đổ dữ liệu tìm được vào Giao diện thông qua ViewModel
-        if (!string.IsNullOrEmpty(playerName)) _viewModel.PlayerName = playerName;
-        _viewModel.ServerHost = !string.IsNullOrEmpty(serverHost) ? serverHost : "127.0.0.1";
-        if (serverPort.HasValue) _viewModel.ServerPort = serverPort.Value;
+        
     }
 
     private async void ConnectButton_Click(object sender, RoutedEventArgs e)
