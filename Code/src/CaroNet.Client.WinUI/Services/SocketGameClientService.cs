@@ -513,6 +513,9 @@ public sealed class SocketGameClientService : IGameClientService, IAsyncDisposab
 
     public async ValueTask DisposeAsync()
     {
+        // === THÊM DÒNG NÀY VÀO ĐÂY ===
+        _roomRequestLock.Dispose();
+
         await _connection.DisposeAsync();
     }
 }
