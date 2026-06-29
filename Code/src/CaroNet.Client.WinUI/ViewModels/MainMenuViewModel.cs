@@ -5,14 +5,13 @@ using System.ComponentModel;
 using System.Runtime.CompilerServices;
 using System.Threading;
 using System.Threading.Tasks;
-using CaroNet.Shared.Models;
 using CaroNet.Client.WinUI.Services;
 using CaroNet.Client.WinUI.Validation;
 using System.Linq;
 
 namespace CaroNet.Client.WinUI.ViewModels;
 
-public partial class MainMenuViewModel : INotifyPropertyChanged
+public sealed class MainMenuViewModel : INotifyPropertyChanged
 {
     private const string DefaultHost = "127.0.0.1";
     private const int DefaultPort = 5000;

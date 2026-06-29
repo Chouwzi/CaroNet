@@ -1,4 +1,4 @@
-﻿namespace CaroNet.Client.WinUI.Models;
+﻿namespace CaroNet.Client.WinUI.ViewModels;
 
 public class BestRecordItem
 {

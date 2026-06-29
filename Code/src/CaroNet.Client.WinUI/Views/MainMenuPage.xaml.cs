@@ -2,7 +2,7 @@ using CaroNet.Client.WinUI.Services;
 using CaroNet.Client.WinUI.ViewModels;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
-
+using System;
 namespace CaroNet.Client.WinUI.Views;
 
 public sealed partial class MainMenuPage : Page
@@ -18,9 +18,26 @@ public sealed partial class MainMenuPage : Page
         Loaded += MainMenuPage_Loaded;
     }
 
-    private async void MainMenuPage_Loaded(object sender, RoutedEventArgs e)
+    private async void MainMenuPage_Loaded(
+    object sender,
+    RoutedEventArgs e)
     {
-        await _viewModel.LoadBestRecordsAsync();
+        try
+        {
+            await _viewModel.LoadBestRecordsAsync();
+        }
+        catch (Exception ex)
+        {
+            var dialog = new ContentDialog
+            {
+                Title = "Lỗi",
+                Content = $"Không thể tải bảng xếp hạng.\n\n{ex.Message}",
+                CloseButtonText = "OK",
+                XamlRoot = this.XamlRoot
+            };
+
+            await dialog.ShowAsync();
+        }
     }
 
     private async void ConnectButton_Click(
