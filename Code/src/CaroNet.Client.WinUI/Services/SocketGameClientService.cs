@@ -80,18 +80,32 @@ public sealed class SocketGameClientService : IGameClientService, IAsyncDisposab
 
     public async Task<GameViewState> CreateRoomAsync(CancellationToken cancellationToken)
     {
-        TaskCompletionSource<GameViewState> completion = PrepareRoomJoinWaiter();
+        // Thử chiếm chốt chặn ngay lập tức (0ms). Nếu thất bại = đang có request chạy ngầm.
+        if (!await _roomRequestLock.WaitAsync(0, cancellationToken).ConfigureAwait(false))
+        {
+            throw new InvalidOperationException("Hệ thống đang xử lý yêu cầu vào phòng trước đó. Vui lòng đợi.");
+        }
 
-        await _connection.SendAsync(
-            new MessageEnvelope
-            {
-                Type = MessageType.CreateRoom,
-                PlayerId = EmptyToNull(_playerId),
-                Payload = JsonSerializer.SerializeToElement(new { })
-            },
-            cancellationToken);
+        try
+        {
+            TaskCompletionSource<GameViewState> completion = PrepareRoomJoinWaiter();
 
-        return await WaitForRoomJoinedAsync(completion, cancellationToken);
+            await _connection.SendAsync(
+                new MessageEnvelope
+                {
+                    Type = MessageType.CreateRoom,
+                    PlayerId = EmptyToNull(_playerId),
+                    Payload = JsonSerializer.SerializeToElement(new { })
+                },
+                cancellationToken);
+
+            return await WaitForRoomJoinedAsync(completion, cancellationToken);
+        }
+        finally
+        {
+            // Luôn luôn mở khóa chốt chặn khi kết thúc (kể cả thành công, thất bại hay timeout)
+            _roomRequestLock.Release();
+        }
     }
 
     public async Task<GameViewState> JoinRoomAsync(
