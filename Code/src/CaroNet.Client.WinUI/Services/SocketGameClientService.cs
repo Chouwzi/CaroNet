@@ -16,6 +16,7 @@ public sealed class SocketGameClientService : IGameClientService, IAsyncDisposab
 
     private readonly IClientConnection _connection;
     private readonly object _stateLock = new();
+    private readonly SemaphoreSlim _roomRequestLock = new(1, 1);
     private TaskCompletionSource<GameViewState>? _roomJoinedCompletion;
     private string _connectionStatus = "Chưa kết nối server";
     private string _currentTurnSymbol = "X";
