@@ -45,10 +45,7 @@ public sealed class GameViewModel : INotifyPropertyChanged
 
     public ObservableCollection<BoardCellViewModel> BoardCells { get; } = [];
 
-    /// <summary>
-    /// GamePage gọi method này sau khi InitializeComponent() để đảm bảo
-    /// DispatcherQueue đã sẵn sàng cho UI thread dispatching.
-    /// </summary>
+    
     public void SetDispatcher(Action<Action> dispatcher)
     {
         _dispatchToUI = dispatcher;
@@ -97,9 +94,7 @@ public sealed class GameViewModel : INotifyPropertyChanged
 
     private void GameClient_GameStateUpdated(object? sender, GameViewState state)
     {
-        // GameStateUpdated fire từ background receive thread,
-        // phải marshal về UI thread.
-        // Ưu tiên DispatcherQueue (WinUI 3), fallback SynchronizationContext.
+        
         if (_dispatchToUI is not null)
         {
             _dispatchToUI(() => ApplyState(state));

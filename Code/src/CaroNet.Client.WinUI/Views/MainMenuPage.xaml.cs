@@ -59,8 +59,7 @@ public sealed partial class MainMenuPage : Page
 
     private void BestRecordButton_Click(object sender, RoutedEventArgs e)
     {
-        // Thay vì ẩn/hiện tại chỗ, lệnh này sẽ chuyển hẳn sang trang BestRecordPage
-        // Truyền kèm theo _viewModel để trang mới lấy được danh sách BestRecords đã load
+        
         Frame.Navigate(typeof(BestRecordPage), _viewModel);
     }
 }
