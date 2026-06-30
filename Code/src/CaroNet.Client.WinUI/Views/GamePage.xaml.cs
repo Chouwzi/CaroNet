@@ -1,71 +1,84 @@
-using CaroNet.Client.WinUI.Services;
 using CaroNet.Client.WinUI.ViewModels;
+using Microsoft.UI;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
-using Microsoft.UI.Xaml.Data;
+using Microsoft.UI.Xaml.Media;
+using Windows.UI;
 
 namespace CaroNet.Client.WinUI.Views;
 
 public sealed partial class GamePage : Page
 {
-    private readonly GameViewModel _viewModel;
+    private GameViewModel? _viewModel;
 
     public GamePage()
     {
-        InitializeComponent();
-
-        // Khởi tạo ViewModel SAU InitializeComponent() để đảm bảo
-        // SynchronizationContext.Current và DispatcherQueue đã sẵn sàng.
-        _viewModel = new GameViewModel(AppServices.GameClient);
-
-        // Inject DispatcherQueue vào ViewModel — cách chính thức WinUI 3
-        // để marshal background thread callbacks về UI thread.
-        _viewModel.SetDispatcher(action => DispatcherQueue.TryEnqueue(
-            Microsoft.UI.Dispatching.DispatcherQueuePriority.Normal,
-            () => action()));
-
-        DataContext = _viewModel;
-        BuildBoard();
+        this.InitializeComponent();
+        this.Loaded += GamePage_Loaded;
     }
 
-    private void BuildBoard()
+    private void GamePage_Loaded(object sender, RoutedEventArgs e)
     {
-        BoardGrid.RowDefinitions.Clear();
-        BoardGrid.ColumnDefinitions.Clear();
-        BoardGrid.Children.Clear();
+        _viewModel = DataContext as GameViewModel;
 
-        for (var index = 0; index < GameViewModel.BoardSize; index++)
+        if (_viewModel != null)
         {
-            BoardGrid.RowDefinitions.Add(new RowDefinition());
-            BoardGrid.ColumnDefinitions.Add(new ColumnDefinition());
-        }
-
-        foreach (var cell in _viewModel.BoardCells)
-        {
-            var button = new Button
-            {
-                DataContext = cell,
-                Style = (Style)Resources["BoardCellButtonStyle"],
-            };
-
-            button.SetBinding(ContentControl.ContentProperty, new Binding
-            {
-                Path = new PropertyPath(nameof(BoardCellViewModel.Mark)),
-                Mode = BindingMode.OneWay,
-            });
-            button.Click += BoardCellButton_Click;
-
-            Grid.SetRow(button, cell.Row);
-            Grid.SetColumn(button, cell.Column);
-            BoardGrid.Children.Add(button);
+            _viewModel.PropertyChanged += ViewModel_PropertyChanged;
+            UpdateTurnUI();
         }
     }
 
-    private async void BoardCellButton_Click(object sender, RoutedEventArgs e)
+    private void ViewModel_PropertyChanged(object? sender, System.ComponentModel.PropertyChangedEventArgs e)
     {
-        if (sender is Button { DataContext: BoardCellViewModel cell })
+        if (e.PropertyName == nameof(GameViewModel.IsMyTurn) ||
+            e.PropertyName == nameof(GameViewModel.TurnMessage))
         {
-            await _viewModel.MakeMoveAsync(cell.Row, cell.Column);
+            UpdateTurnUI();
+        }
+    }
+
+    private void UpdateTurnUI()
+    {
+        if (_viewModel == null) return;
+
+        bool isMyTurn = _viewModel.IsMyTurn;
+
+        
+        if (TurnBanner != null)
+        {
+            if (isMyTurn)
+            {
+                TurnBanner.Background = new SolidColorBrush(ColorHelper.FromArgb(255, 232, 245, 233));
+                TurnBanner.BorderBrush = new SolidColorBrush(ColorHelper.FromArgb(255, 165, 214, 167));
+            }
+            else
+            {
+                TurnBanner.Background = new SolidColorBrush(ColorHelper.FromArgb(255, 245, 245, 245));
+                TurnBanner.BorderBrush = new SolidColorBrush(ColorHelper.FromArgb(255, 189, 189, 189));
+            }
+        }
+
+        
+        var boardBorder = BoardGrid?.Parent as Border;
+        if (boardBorder != null)
+        {
+            boardBorder.BorderBrush = isMyTurn
+                ? new SolidColorBrush(ColorHelper.FromArgb(255, 76, 175, 80))
+                : new SolidColorBrush(ColorHelper.FromArgb(255, 158, 158, 158));
+        }
+
+        
+        if (BoardGrid != null)
+        {
+            foreach (var child in BoardGrid.Children)
+            {
+                if (child is Button button)
+                {
+                    button.IsEnabled = isMyTurn;
+                    button.IsHitTestVisible = isMyTurn;
+                    button.Opacity = isMyTurn ? 1.0 : 0.65;
+                }
+            }
         }
     }
 }
