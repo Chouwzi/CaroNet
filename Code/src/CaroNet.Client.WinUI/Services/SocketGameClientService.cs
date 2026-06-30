@@ -16,6 +16,7 @@ public sealed class SocketGameClientService : IGameClientService, IAsyncDisposab
 
     private readonly IClientConnection _connection;
     private readonly object _stateLock = new();
+    private readonly SemaphoreSlim _roomRequestLock = new(1, 1);
     private TaskCompletionSource<GameViewState>? _roomJoinedCompletion;
     private string _connectionStatus = "Chưa kết nối server";
     private string _currentTurnSymbol = "X";
@@ -79,41 +80,69 @@ public sealed class SocketGameClientService : IGameClientService, IAsyncDisposab
 
     public async Task<GameViewState> CreateRoomAsync(CancellationToken cancellationToken)
     {
-        TaskCompletionSource<GameViewState> completion = PrepareRoomJoinWaiter();
+        // Thử chiếm chốt chặn ngay lập tức (0ms). Nếu thất bại = đang có request chạy ngầm.
+        if (!await _roomRequestLock.WaitAsync(0, cancellationToken).ConfigureAwait(false))
+        {
+            throw new InvalidOperationException("Hệ thống đang xử lý yêu cầu vào phòng trước đó. Vui lòng đợi.");
+        }
 
-        await _connection.SendAsync(
-            new MessageEnvelope
-            {
-                Type = MessageType.CreateRoom,
-                PlayerId = EmptyToNull(_playerId),
-                Payload = JsonSerializer.SerializeToElement(new { })
-            },
-            cancellationToken);
+        try
+        {
+            TaskCompletionSource<GameViewState> completion = PrepareRoomJoinWaiter();
 
-        return await WaitForRoomJoinedAsync(completion, cancellationToken);
+            await _connection.SendAsync(
+                new MessageEnvelope
+                {
+                    Type = MessageType.CreateRoom,
+                    PlayerId = EmptyToNull(_playerId),
+                    Payload = JsonSerializer.SerializeToElement(new { })
+                },
+                cancellationToken);
+
+            return await WaitForRoomJoinedAsync(completion, cancellationToken);
+        }
+        finally
+        {
+            // Luôn luôn mở khóa chốt chặn khi kết thúc (kể cả thành công, thất bại hay timeout)
+            _roomRequestLock.Release();
+        }
     }
 
     public async Task<GameViewState> JoinRoomAsync(
         string roomId,
         CancellationToken cancellationToken)
     {
-        TaskCompletionSource<GameViewState> completion = PrepareRoomJoinWaiter();
-        string trimmedRoomId = roomId.Trim();
+        // Thử chiếm chốt chặn ngay lập tức
+        if (!await _roomRequestLock.WaitAsync(0, cancellationToken).ConfigureAwait(false))
+        {
+            throw new InvalidOperationException("Hệ thống đang xử lý yêu cầu vào phòng trước đó. Vui lòng đợi.");
+        }
 
-        await _connection.SendAsync(
-            new MessageEnvelope
-            {
-                Type = MessageType.JoinRoom,
-                RoomId = trimmedRoomId,
-                PlayerId = EmptyToNull(_playerId),
-                Payload = JsonSerializer.SerializeToElement(new
+        try
+        {
+            TaskCompletionSource<GameViewState> completion = PrepareRoomJoinWaiter();
+            string trimmedRoomId = roomId.Trim();
+
+            await _connection.SendAsync(
+                new MessageEnvelope
                 {
-                    roomId = trimmedRoomId
-                })
-            },
-            cancellationToken);
+                    Type = MessageType.JoinRoom,
+                    RoomId = trimmedRoomId,
+                    PlayerId = EmptyToNull(_playerId),
+                    Payload = JsonSerializer.SerializeToElement(new
+                    {
+                        roomId = trimmedRoomId
+                    })
+                },
+                cancellationToken);
 
-        return await WaitForRoomJoinedAsync(completion, cancellationToken);
+            return await WaitForRoomJoinedAsync(completion, cancellationToken);
+        }
+        finally
+        {
+            // Luôn luôn mở khóa chốt chặn khi kết thúc
+            _roomRequestLock.Release();
+        }
     }
 
     public async Task MakeMoveAsync(
@@ -484,6 +513,9 @@ public sealed class SocketGameClientService : IGameClientService, IAsyncDisposab
 
     public async ValueTask DisposeAsync()
     {
+        // === THÊM DÒNG NÀY VÀO ĐÂY ===
+        _roomRequestLock.Dispose();
+
         await _connection.DisposeAsync();
     }
 }
