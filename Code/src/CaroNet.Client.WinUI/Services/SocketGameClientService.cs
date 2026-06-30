@@ -27,6 +27,30 @@ public sealed class SocketGameClientService : IGameClientService, IAsyncDisposab
     private string _serverError = string.Empty;
     private string[,] _board = InitEmptyBoard();
 
+    // Định nghĩa sự kiện nhận Chat từ Socket mạng thật gửi về
+    public event EventHandler<CaroNet.Shared.Protocol.Payloads.ChatReceivedPayload>? ChatReceived;
+
+    // Hàm gửi tin nhắn qua Socket lên Server mạng thật
+    public async Task SendChatAsync(string message)
+    {
+        var payload = new CaroNet.Shared.Protocol.Payloads.ChatPayload
+        {
+            Message = message
+        };
+
+        var envelope = new MessageEnvelope
+        {
+            Type = MessageType.Chat,
+            RoomId = EmptyToNull(_roomId),
+            PlayerId = EmptyToNull(_playerId),
+            // Đồng bộ cách đóng gói dạng JsonElement giống như hàm MakeMoveAsync
+            Payload = JsonSerializer.SerializeToElement(payload)
+        };
+
+        // Truyền kèm CancellationToken do hàm SendAsync của connection yêu cầu
+        await _connection.SendAsync(envelope, CancellationToken.None);
+    }
+
     public SocketGameClientService(IClientConnection connection)
     {
         _connection = connection;
@@ -221,6 +245,9 @@ public sealed class SocketGameClientService : IGameClientService, IAsyncDisposab
                     break;
                 case MessageType.GameEnded:
                     ApplyGameEnded(args.Message);
+                    break;
+                case MessageType.ChatReceived:
+                    ApplyChatReceived(args.Message);
                     break;
             }
         }
@@ -517,5 +544,24 @@ public sealed class SocketGameClientService : IGameClientService, IAsyncDisposab
         _roomRequestLock.Dispose();
 
         await _connection.DisposeAsync();
+    }
+    private void ApplyChatReceived(MessageEnvelope message)
+    {
+        if (message.Payload.HasValue)
+        {
+            try
+            {
+                var chatReceivedPayload = message.Payload.Value.Deserialize<CaroNet.Shared.Protocol.Payloads.ChatReceivedPayload>();
+                if (chatReceivedPayload != null)
+                {
+                    // Kích hoạt Event để GameViewModel bên ngoài nghe thấy và render lên giao diện
+                    ChatReceived?.Invoke(this, chatReceivedPayload);
+                }
+            }
+            catch (Exception ex)
+            {
+                UpdateError($"Không thể giải mã tin nhắn chat: {ex.Message}");
+            }
+        }
     }
 }

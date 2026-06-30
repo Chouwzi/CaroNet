@@ -24,6 +24,10 @@ public sealed class MainMenuViewModelTests
 
     private sealed class FailingGameClientService(Exception exception) : IGameClientService
     {
+
+        public event EventHandler<CaroNet.Shared.Protocol.Payloads.ChatReceivedPayload>? ChatReceived;
+        public Task SendChatAsync(string message) => Task.CompletedTask;
+
         public event EventHandler<GameViewState>? GameStateUpdated
         {
             add { }
