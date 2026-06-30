@@ -18,6 +18,23 @@ public sealed class LocalDemoGameClientService : IGameClientService
     private string _roomId = string.Empty;
     private GameViewState? _currentState;
 
+    // Đăng ký sự kiện Chat cho class demo
+    public event EventHandler<CaroNet.Shared.Protocol.Payloads.ChatReceivedPayload>? ChatReceived;
+
+    // Xử lý gửi chat ảo khi chạy Demo không có mạng
+    public async Task SendChatAsync(string message)
+    {
+        // Giả lập độ trễ mạng 500ms rồi tự động phản hồi lại tin nhắn
+        await Task.Delay(500);
+
+        ChatReceived?.Invoke(this, new CaroNet.Shared.Protocol.Payloads.ChatReceivedPayload
+        {
+            SenderName = "Hệ thống (Demo)",
+            Message = $"Bạn vừa nói: {message}",
+            Timestamp = DateTime.Now
+        });
+    }
+
     public event EventHandler<GameViewState>? GameStateUpdated;
 
     public GameViewState CurrentState => _currentState ?? BuildState(string.Empty);

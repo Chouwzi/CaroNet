@@ -233,56 +233,91 @@
                     </StackPanel>
                 </Border>
 
-                <!-- ========== CHAT BLOCK ========== -->
                 <Border Grid.Row="1"
-                        Background="{ThemeResource CardBackgroundFillColorDefaultBrush}"
-                        BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}"
-                        BorderThickness="1"
-                        CornerRadius="22"
-                        Padding="20">
+        Background="{ThemeResource CardBackgroundFillColorDefaultBrush}"
+        BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}"
+        BorderThickness="1"
+        CornerRadius="22"
+        Padding="20">
 
-                    <StackPanel Spacing="12">
-                        <TextBlock Text="Chat"
-                                   Foreground="{ThemeResource TextFillColorPrimaryBrush}"
-                                   FontSize="21"
-                                   FontWeight="SemiBold"/>
+                    <Grid RowDefinitions="Auto,*,Auto">
+                        <StackPanel Grid.Row="0" Spacing="4" Margin="0,0,0,8">
+                            <TextBlock Text="Chat"
+                       Foreground="{ThemeResource TextFillColorPrimaryBrush}"
+                       FontSize="21"
+                       FontWeight="SemiBold"/>
+                            <TextBlock Text="{Binding ConnectionStatus}"
+                       Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                       FontSize="13"
+                       TextWrapping="Wrap"/>
+                        </StackPanel>
 
-                        <TextBlock Text="{Binding ConnectionStatus}"
-                                   Foreground="{ThemeResource TextFillColorSecondaryBrush}"
-                                   FontSize="14"
-                                   TextWrapping="Wrap"/>
+                        <TextBlock x:Name="EmptyStateTextBlock"
+                   Grid.Row="1"
+                   Text="Chưa có tin nhắn"
+                   Foreground="{ThemeResource TextFillColorDisabledBrush}"
+                   FontSize="14"
+                   FontStyle="Italic"
+                   HorizontalAlignment="Center"
+                   VerticalAlignment="Center"/>
 
-                        <TextBlock Text="{Binding ServerError}"
-                                   Foreground="{ThemeResource SystemFillColorCriticalBrush}"
-                                   FontSize="14"
-                                   TextWrapping="Wrap"/>
-                    </StackPanel>
+                        <ListView x:Name="ChatListView"
+                  Grid.Row="1"
+                  ItemsSource="{Binding ChatMessages}"
+                  SelectionMode="None"
+                  Background="Transparent"
+                  BorderThickness="0">
+                            <ListView.ItemTemplate>
+                                <DataTemplate>
+                                    <TextBlock TextWrapping="Wrap" Margin="0,3" FontSize="14">
+                        <Run Text="[" Foreground="{ThemeResource TextFillColorSecondaryBrush}"/>
+                        <Run Text="{Binding SenderName}" FontWeight="SemiBold" Foreground="{ThemeResource SystemFillColorAccentBrush}"/>
+                        <Run Text="]: " Foreground="{ThemeResource TextFillColorSecondaryBrush}"/>
+                        <Run Text="{Binding Message}"/>
+                                    </TextBlock>
+                                </DataTemplate>
+                            </ListView.ItemTemplate>
+                        </ListView>
+
+                        <TextBlock Grid.Row="2"
+                   Text="{Binding ServerError}"
+                   Foreground="{ThemeResource SystemFillColorCriticalBrush}"
+                   FontSize="13"
+                   TextWrapping="Wrap"
+                   Margin="0,6,0,0"/>
+                    </Grid>
                 </Border>
-
-                <!-- ========== CHAT INPUT BLOCK ========== -->
                 <Border Grid.Row="2"
-                        Background="{ThemeResource CardBackgroundFillColorDefaultBrush}"
-                        BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}"
-                        BorderThickness="1"
-                        CornerRadius="22"
-                        Padding="12">
+        Background="{ThemeResource CardBackgroundFillColorDefaultBrush}"
+        BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}"
+        BorderThickness="1"
+        CornerRadius="22"
+        Padding="12">
 
                     <Grid ColumnDefinitions="*,52"
-                          ColumnSpacing="10">
+          ColumnSpacing="10">
 
-                        <TextBox Grid.Column="0"
-                                 PlaceholderText="Nhập chat..."
-                                 FontSize="15"
-                                 BorderBrush="{ThemeResource ControlStrokeColorDefaultBrush}"
-                                 BorderThickness="1"
-                                 CornerRadius="14"
-                                 Padding="14,8"/>
+                        <TextBox x:Name="ChatInputTextBox"
+                 Grid.Column="0"
+                 PlaceholderText="Nhập chat..."
+                 Text="{Binding ChatInputText, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
+                 IsEnabled="{Binding IsChatInputEnabled}"
+                 FontSize="15"
+                 BorderBrush="{ThemeResource ControlStrokeColorDefaultBrush}"
+                 BorderThickness="1"
+                 CornerRadius="14"
+                 Padding="14,8"/>
 
-                        <Button Grid.Column="1"
-                                Content="➜"
-                                FontSize="20"
-                                FontWeight="SemiBold"
-                                CornerRadius="14"/>
+                        <Button x:Name="SendChatButton"
+                Grid.Column="1"
+                Content="➜"
+                Click="SendChatButton_Click"
+                IsEnabled="{Binding IsSendButtonEnabled}"
+                MinWidth="44"
+                MinHeight="44"
+                FontSize="20"
+                FontWeight="SemiBold"
+                CornerRadius="14"/>
                     </Grid>
                 </Border>
 
