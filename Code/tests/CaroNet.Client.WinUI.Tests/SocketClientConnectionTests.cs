@@ -82,7 +82,7 @@ public sealed class SocketClientConnectionTests
     }
 
     [Fact]
-    public async Task ReceiveLoop_reports_protocol_error_when_payload_length_exceeds_maximum()
+    public async Task ReceiveLoop_Throws_IfPayloadTooLarge()
     {
         await using var server = new LoopbackServer();
         await using var client = new SocketClientConnection();
