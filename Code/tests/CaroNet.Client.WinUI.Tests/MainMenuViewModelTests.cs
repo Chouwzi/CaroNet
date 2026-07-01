@@ -1,6 +1,10 @@
 using CaroNet.Client.WinUI.Services;
 using CaroNet.Client.WinUI.ViewModels;
 using CaroNet.Shared.Game;
+using System;
+using System.Threading;
+using System.Threading.Tasks;
+using Xunit; // Đảm bảo đã có để nhận diện thuộc tính [Fact]
 
 namespace CaroNet.Client.WinUI.Tests;
 
@@ -24,15 +28,14 @@ public sealed class MainMenuViewModelTests
 
     private sealed class FailingGameClientService(Exception exception) : IGameClientService
     {
-
+        // Vô hiệu hóa cảnh báo CS0067 dành riêng cho các sự kiện giả lập của Test double
+#pragma warning disable CS0067
         public event EventHandler<CaroNet.Shared.Protocol.Payloads.ChatReceivedPayload>? ChatReceived;
-        public Task SendChatAsync(string message) => Task.CompletedTask;
 
-        public event EventHandler<GameViewState>? GameStateUpdated
-        {
-            add { }
-            remove { }
-        }
+        public event EventHandler<GameViewState>? GameStateUpdated;
+#pragma warning restore CS0067
+
+        public Task SendChatAsync(string message) => Task.CompletedTask;
 
         public GameViewState CurrentState { get; } = new(
             string.Empty,
