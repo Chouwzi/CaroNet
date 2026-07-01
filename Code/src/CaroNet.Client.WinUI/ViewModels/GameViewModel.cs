@@ -96,9 +96,7 @@ public sealed class GameViewModel : INotifyPropertyChanged
     public event PropertyChangedEventHandler? PropertyChanged;
     public ObservableCollection<BoardCellViewModel> BoardCells { get; } = [];
 
-    /// <summary>
-    /// Kích hoạt bộ điều phối luồng từ View truyền vào để chạy an toàn trên UI Thread
-    /// </summary>
+
     public void SetDispatcher(Action<Action> dispatcher)
     {
         _dispatchToUI = dispatcher;
@@ -171,6 +169,7 @@ public sealed class GameViewModel : INotifyPropertyChanged
 
     private void GameClient_GameStateUpdated(object? sender, GameViewState state)
     {
+        
         SafeExecuteOnUI(() => ApplyState(state));
     }
 
