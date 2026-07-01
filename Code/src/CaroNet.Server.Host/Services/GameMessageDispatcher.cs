@@ -6,6 +6,7 @@ using CaroNet.Shared.Protocol;
 using CaroNet.Shared.Protocol.Payloads;
 using CaroNet.Storage.Matches;
 
+
 namespace CaroNet.Server.Host.Services;
 
 // Xử lý message từ client: Hello, CreateRoom, JoinRoom, MakeMove.
@@ -52,6 +53,10 @@ public sealed class GameMessageDispatcher : IMessageDispatcher
 
             case MessageType.MakeMove:
                 await HandleMakeMoveAsync(session, message, cancellationToken);
+                break;
+
+            case MessageType.Chat:
+                await HandleChatAsync(session, message, cancellationToken);
                 break;
 
             default:
@@ -276,6 +281,65 @@ public sealed class GameMessageDispatcher : IMessageDispatcher
         {
             await BroadcastGameEndedAsync(room, result.Status, cancellationToken);
             await SaveMatchHistoryAsync(room, result.Status);
+        }
+    }
+
+    private async Task HandleChatAsync(
+    ClientSession session,
+    MessageEnvelope message,
+    CancellationToken cancellationToken)
+    {
+        // 1. Kiểm tra xem người chơi đã ở trong Room chưa (Issue: không cho gửi khi chưa vào room)
+        GameRoom? room = _roomManager.GetRoomBySession(session.Id);
+        if (room is null) return;
+
+        // 2. Kiểm tra dữ liệu gói tin gửi lên
+        if (!message.Payload.HasValue) return;
+
+        try
+        {
+            var chatPayload = message.Payload.Value.Deserialize<ChatPayload>();
+            string? processedMessage = chatPayload?.Message?.Trim();
+
+            // Input validation: Reject nếu rỗng hoặc quá 200 ký tự
+            if (string.IsNullOrEmpty(processedMessage) || processedMessage.Length > 200)
+                return;
+
+            // 3. Lấy tên người gửi đã đăng ký trong hệ thống Server
+            string senderName = GetPlayerName(session.Id);
+
+            // 4. Tạo Payload phát sóng chuẩn ChatReceivedPayload
+            var broadcastPayload = new ChatReceivedPayload
+            {
+                SenderName = senderName,
+                Message = processedMessage,
+                Timestamp = DateTime.Now
+            };
+
+            // 5. Đóng gói vào MessageEnvelope phát sóng cho cả room
+            var envelope = new MessageEnvelope
+            {
+                Type = MessageType.ChatReceived,
+                RoomId = room.RoomId,
+                Payload = JsonSerializer.SerializeToElement(broadcastPayload)
+            };
+
+            // 6. Tiến hành Broadcast tới tất cả các Player trong Room (bắt chước logic MakeMove)
+            foreach (var player in room.GetPlayers())
+            {
+                try
+                {
+                    await player.SendAsync(envelope, cancellationToken);
+                }
+                catch (Exception ex)
+                {
+                    Console.WriteLine($"[CHAT BROADCAST ERROR] {player.Id}: {ex.Message}");
+                }
+            }
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"[CHAT ERROR] {session.Id}: {ex.Message}");
         }
     }
 

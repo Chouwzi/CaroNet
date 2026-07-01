@@ -1,13 +1,17 @@
+using CaroNet.Shared.Game;
+using CaroNet.Shared.Protocol.Payloads;
 using System;
 using System.Collections.Generic;
 using System.Threading;
 using System.Threading.Tasks;
-using CaroNet.Shared.Game;
 
 namespace CaroNet.Client.WinUI.Services;
 
 public interface IGameClientService
 {
+
+    event EventHandler<ChatReceivedPayload> ChatReceived;
+    Task SendChatAsync(string message);
     event EventHandler<GameViewState>? GameStateUpdated;
 
     GameViewState CurrentState { get; }

@@ -9,6 +9,7 @@ using CaroNet.Client.WinUI.Models;
 using CaroNet.Client.WinUI.Services;
 using CaroNet.Client.WinUI.Validation;
 using System.Linq;
+using Windows.Storage;
 
 namespace CaroNet.Client.WinUI.ViewModels;
 
@@ -40,32 +41,39 @@ public sealed class MainMenuViewModel : INotifyPropertyChanged
     {
         BestRecords.Clear();
 
-        var matches =
-            await AppServices.MatchHistoryStore.GetAllMatchesAsync();
-
-        var ranking = matches
-            .Where(match => !string.IsNullOrWhiteSpace(match.WinnerName))
-            .GroupBy(match => match.WinnerName!)
-            .Select(group => new BestRecordItem
-            {
-                PlayerName = group.Key,
-                Wins = group.Count()
-            })
-            .OrderByDescending(item => item.Wins)
-            .ThenBy(item => item.PlayerName)
-            .Take(10)
-            .ToList();
-
-        int rank = 1;
-
-        foreach (var item in ranking)
+        try
         {
-            item.Rank = rank++;
-            BestRecords.Add(item);
+            var matches =
+                await AppServices.MatchHistoryStore.GetAllMatchesAsync();
+
+            var ranking = matches
+                .Where(match => !string.IsNullOrWhiteSpace(match.WinnerName))
+                .GroupBy(match => match.WinnerName!)
+                .Select(group => new BestRecordItem
+                {
+                    PlayerName = group.Key,
+                    Wins = group.Count()
+                })
+                .OrderByDescending(item => item.Wins)
+                .ThenBy(item => item.PlayerName)
+                .Take(10)
+                .ToList();
+
+            int rank = 1;
+
+            foreach (var item in ranking)
+            {
+                item.Rank = rank++;
+                BestRecords.Add(item);
+            }
+        }
+        catch
+        {
+            
         }
     }
 
-    // ===============================================
+    
 
     public string PlayerName
     {
@@ -73,6 +81,21 @@ public sealed class MainMenuViewModel : INotifyPropertyChanged
         set => SetProperty(ref _playerName, value);
     }
 
+    
+    private string _serverHost = "127.0.0.1";
+    public string ServerHost
+    {
+        get => _serverHost;
+        set => SetProperty(ref _serverHost, value);
+    }
+
+    // Khai báo cho ServerPort
+    private int _serverPort = 5000;
+    public int ServerPort
+    {
+        get => _serverPort;
+        set => SetProperty(ref _serverPort, value);
+    }
     public string RoomId
     {
         get => _roomId;
@@ -95,17 +118,57 @@ public sealed class MainMenuViewModel : INotifyPropertyChanged
             return false;
         }
 
+        // Lưu thông tin người chơi
+        try
+        {
+            var localSettings = ApplicationData.Current.LocalSettings;
+
+            localSettings.Values["PlayerName"] = PlayerName;
+            localSettings.Values["ServerHost"] = ServerHost;
+            localSettings.Values["ServerPort"] = ServerPort;
+        }
+        catch (InvalidOperationException)
+        {
+            try
+            {
+                string appDataFolder =
+                    System.IO.Path.Combine(
+                        Environment.GetFolderPath(
+                            Environment.SpecialFolder.LocalApplicationData),
+                        "CaroNet");
+
+                System.IO.Directory.CreateDirectory(appDataFolder);
+
+                string filePath =
+                    System.IO.Path.Combine(
+                        appDataFolder,
+                        "settings.txt");
+
+                System.IO.File.WriteAllLines(
+                    filePath,
+                    new[]
+                    {
+                    PlayerName,
+                    ServerHost,
+                    ServerPort.ToString()
+                    });
+            }
+            catch
+            {
+            }
+        }
+
         try
         {
             await _gameClient.ConnectAsync(
                 new ConnectionRequest(
                     PlayerName,
-                    DefaultHost,
-                    DefaultPort),
+                    ServerHost,
+                    ServerPort),
                 CancellationToken.None);
 
             ConnectionStatus =
-                $"Đã connect tới server mặc định {DefaultHost}:{DefaultPort}";
+                $"Đã connect tới server {ServerHost}:{ServerPort}";
 
             _isConnected = true;
 

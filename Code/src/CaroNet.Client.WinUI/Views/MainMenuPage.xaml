@@ -31,6 +31,22 @@
                          FontSize="17"
                          CornerRadius="12"/>
 
+                <TextBox x:Name="ServerHostTextBox"
+                         Header="Server Host"
+                         PlaceholderText="127.0.0.1"
+                         Text="{Binding ServerHost, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
+                         Height="70"
+                         FontSize="17"
+                         CornerRadius="12"/>
+
+                <TextBox x:Name="ServerPortTextBox"
+                         Header="Server Port"
+                         PlaceholderText="5000"
+                         Text="{Binding ServerPort, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
+                         Height="70"
+                         FontSize="17"
+                         CornerRadius="12"/>
+
                 <Button x:Name="ConnectButton"
                         Height="52"
                         HorizontalAlignment="Stretch"
@@ -77,40 +93,40 @@
                                FontWeight="SemiBold"/>
                 </Button>
 
-                <!-- Nút Lịch sử trận đấu -->
                 <Button x:Name="HistoryButton"
-        Height="52"
-        HorizontalAlignment="Stretch"
-        CornerRadius="12"
-        Click="HistoryButton_Click">
-                    <TextBlock Text="Lịch sử trận đấu" FontSize="17" FontWeight="SemiBold"/>
+                        Height="52"
+                        HorizontalAlignment="Stretch"
+                        CornerRadius="12"
+                        Click="HistoryButton_Click">
+                    <TextBlock Text="Lịch sử trận đấu"
+                               FontSize="17"
+                               FontWeight="SemiBold"/>
                 </Button>
 
-                <!-- Nút Best Record -->
                 <Button x:Name="BestRecordButton"
-        Height="52"
-        HorizontalAlignment="Stretch"
-        CornerRadius="12"
-        Click="BestRecordButton_Click">
-                    <TextBlock Text="Best Record (Top 10)" FontSize="17" FontWeight="SemiBold"/>
+                        Height="52"
+                        HorizontalAlignment="Stretch"
+                        CornerRadius="12"
+                        Click="BestRecordButton_Click">
+                    <TextBlock Text="Best Record (Top 10)"
+                               FontSize="17"
+                               FontWeight="SemiBold"/>
                 </Button>
 
-                <!-- Danh sách hiển thị Top 10 (Mặc định ban đầu ẩn: Visibility="Collapsed") -->
-                <ListView
-                    x:Name="BestRecordList"
-                    Visibility="Collapsed" 
-                    ItemsSource="{Binding BestRecords}"
-                    SelectionMode="None"
-                    MaxHeight="300">
+                <ListView x:Name="BestRecordList"
+                          Visibility="Collapsed"
+                          ItemsSource="{Binding BestRecords}"
+                          SelectionMode="None"
+                          MaxHeight="300">
 
                     <ListView.ItemTemplate>
                         <DataTemplate>
-                            <Border
-                                Margin="0,4"
-                                Padding="12"
-                                BorderBrush="Gray"
-                                BorderThickness="1"
-                                CornerRadius="10">
+
+                            <Border Margin="0,4"
+                                    Padding="12"
+                                    BorderBrush="Gray"
+                                    BorderThickness="1"
+                                    CornerRadius="10">
 
                                 <Grid>
                                     <Grid.ColumnDefinitions>
@@ -119,31 +135,31 @@
                                         <ColumnDefinition Width="90"/>
                                     </Grid.ColumnDefinitions>
 
-                                    <TextBlock
-                                        Grid.Column="0"
-                                        Text="{Binding Rank}"
-                                        FontWeight="Bold"
-                                        FontSize="18"/>
+                                    <TextBlock Grid.Column="0"
+                                               Text="{Binding Rank}"
+                                               FontWeight="Bold"
+                                               FontSize="18"/>
 
-                                    <TextBlock
-                                        Grid.Column="1"
-                                        Text="{Binding PlayerName}"
-                                        FontSize="18"/>
+                                    <TextBlock Grid.Column="1"
+                                               Text="{Binding PlayerName}"
+                                               FontSize="18"/>
 
-                                    <TextBlock
-                                        Grid.Column="2"
-                                        HorizontalAlignment="Right"
-                                        FontWeight="SemiBold"
-                                        FontSize="18">
+                                    <TextBlock Grid.Column="2"
+                                               HorizontalAlignment="Right"
+                                               FontWeight="SemiBold"
+                                               FontSize="18">
                                         <Run Text="{Binding Wins}"/>
                                         <Run Text=" Wins"/>
                                     </TextBlock>
+
                                 </Grid>
+
                             </Border>
+
                         </DataTemplate>
                     </ListView.ItemTemplate>
+
                 </ListView>
-                <!-- ========================================================= -->
 
                 <TextBlock x:Name="ConnectionStatusText"
                            Text="{Binding ConnectionStatus}"
@@ -152,6 +168,9 @@
                            Foreground="{ThemeResource TextFillColorSecondaryBrush}"/>
 
             </StackPanel>
+
         </ScrollViewer>
+
     </Grid>
+
 </Page>

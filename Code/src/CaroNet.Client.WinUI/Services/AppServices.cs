@@ -30,7 +30,8 @@ public static class AppServices
             current = Directory.GetParent(current)?.FullName;
         }
 
-        throw new FileNotFoundException("Không tìm thấy caronet.db");
+        // Fallback để app không crash nếu chưa tìm thấy database
+        return "caronet.db";
     }
 
     public static IMatchHistoryStore MatchHistoryStore { get; } =

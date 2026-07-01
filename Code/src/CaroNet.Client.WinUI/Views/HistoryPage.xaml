@@ -1,4 +1,3 @@
-<?xml version="1.0" encoding="utf-8"?>
 <Page
     x:Class="CaroNet.Client.WinUI.Views.HistoryPage"
     xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
@@ -8,7 +7,6 @@
     mc:Ignorable="d">
 
     <Grid Padding="20">
-
         <Grid.RowDefinitions>
             <RowDefinition Height="Auto"/>
             <RowDefinition Height="Auto"/>
@@ -17,14 +15,12 @@
             <RowDefinition Height="*"/>
         </Grid.RowDefinitions>
 
-        <!-- Back -->
         <Button
             Grid.Row="0"
             Content="← Quay lại"
             HorizontalAlignment="Left"
             Click="BackButton_Click"/>
 
-        <!-- Title -->
         <TextBlock
             Grid.Row="1"
             Text="Match History"
@@ -32,7 +28,6 @@
             FontWeight="Bold"
             Margin="0,10,0,10"/>
 
-        <!-- Loading -->
         <ProgressRing
             x:Name="LoadingRing"
             Grid.Row="2"
@@ -41,7 +36,6 @@
             HorizontalAlignment="Center"
             Visibility="Collapsed"/>
 
-        <!-- Empty -->
         <TextBlock
             x:Name="EmptyText"
             Grid.Row="3"
@@ -50,54 +44,54 @@
             Visibility="Collapsed"
             Margin="0,10"/>
 
-        <!-- History List -->
         <ListView
-            x:Name="HistoryList"
-            Grid.Row="4">
+    x:Name="HistoryList"
+    ItemsSource="{Binding Matches}"
+    Grid.Row="4">
 
             <ListView.ItemTemplate>
                 <DataTemplate>
 
                     <Border
-                        Margin="0,0,0,12"
-                        Padding="12"
-                        BorderBrush="Gray"
-                        BorderThickness="1"
-                        CornerRadius="8">
+                Margin="0,0,0,12"
+                Padding="12"
+                BorderBrush="Gray"
+                BorderThickness="1"
+                CornerRadius="8">
 
                         <StackPanel Spacing="6">
 
                             <TextBlock
-                                FontSize="18"
-                                FontWeight="Bold">
-                                <Run Text="{Binding PlayerX}" />
-                                <Run Text=" vs " />
-                                <Run Text="{Binding PlayerO}" />
+                        FontSize="18"
+                        FontWeight="Bold">
+                        <Run Text="{Binding PlayerX}" />
+                        <Run Text=" vs " />
+                        <Run Text="{Binding PlayerO}" />
                             </TextBlock>
 
                             <TextBlock>
-                                <Run Text="Player X: " />
-                                <Run Text="{Binding PlayerX}" />
+                        <Run Text="Player X: " />
+                        <Run Text="{Binding PlayerX}" />
                             </TextBlock>
 
                             <TextBlock>
-                                <Run Text="Player O: " />
-                                <Run Text="{Binding PlayerO}" />
+                        <Run Text="Player O: " />
+                        <Run Text="{Binding PlayerO}" />
                             </TextBlock>
 
                             <TextBlock>
-                                <Run Text="Winner: " />
-                                <Run Text="{Binding Winner}" />
+                        <Run Text="Winner: " />
+                        <Run Text="{Binding Winner}" />
                             </TextBlock>
 
                             <TextBlock>
-                                <Run Text="Moves: " />
-                                <Run Text="{Binding MoveCount}" />
+                        <Run Text="Moves: " />
+                        <Run Text="{Binding MoveCount}" />
                             </TextBlock>
 
                             <TextBlock>
-                                <Run Text="Time: " />
-                                <Run Text="{Binding PlayedAt}" />
+                        <Run Text="Time: " />
+                        <Run Text="{Binding PlayedAt}" />
                             </TextBlock>
 
                         </StackPanel>
@@ -108,7 +102,5 @@
             </ListView.ItemTemplate>
 
         </ListView>
-
     </Grid>
-
 </Page>

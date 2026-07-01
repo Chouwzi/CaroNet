@@ -13,33 +13,34 @@ public sealed partial class HistoryPage : Page
     {
         InitializeComponent();
 
+        DataContext = _viewModel;
+
         Loaded += HistoryPage_Loaded;
     }
 
-    private async void HistoryPage_Loaded(
-        object sender,
-        RoutedEventArgs e)
+    private async void HistoryPage_Loaded(object sender, RoutedEventArgs e)
     {
         try
         {
             LoadingRing.Visibility = Visibility.Visible;
             LoadingRing.IsActive = true;
+            EmptyText.Visibility = Visibility.Collapsed;
 
+            // Gọi đúng hàm LoadAsync gốc
             await _viewModel.LoadAsync();
-
-            HistoryList.ItemsSource = _viewModel.Matches;
 
             EmptyText.Visibility =
                 _viewModel.Matches.Count == 0
-                ? Visibility.Visible
-                : Visibility.Collapsed;
+                    ? Visibility.Visible
+                    : Visibility.Collapsed;
         }
         catch (Exception ex)
         {
+            // Đúng yêu cầu: Hiển thị hộp thoại báo lỗi tại tầng UI thay vì làm sập app
             var dialog = new ContentDialog
             {
-                Title = "Lỗi",
-                Content = $"Không thể tải lịch sử trận đấu.\n\n{ex.Message}",
+                Title = "Lỗi kết nối Cơ sở dữ liệu",
+                Content = $"Không thể tải lịch sử trận đấu do lỗi kết nối database.\n\nChi tiết: {ex.Message}",
                 CloseButtonText = "OK",
                 XamlRoot = this.XamlRoot
             };
@@ -53,9 +54,7 @@ public sealed partial class HistoryPage : Page
         }
     }
 
-    private void BackButton_Click(
-        object sender,
-        RoutedEventArgs e)
+    private void BackButton_Click(object sender, RoutedEventArgs e)
     {
         if (Frame.CanGoBack)
         {
