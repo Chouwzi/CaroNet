@@ -26,10 +26,10 @@ public sealed class MainMenuViewModelTests
         Assert.Contains("Không thể kết nối server", viewModel.ConnectionStatus);
     }
 
+#pragma warning disable CS0067
     private sealed class FailingGameClientService(Exception exception) : IGameClientService
     {
         // Vô hiệu hóa cảnh báo CS0067 dành riêng cho các sự kiện giả lập của Test double
-#pragma warning disable CS0067
         public event EventHandler<CaroNet.Shared.Protocol.Payloads.ChatReceivedPayload>? ChatReceived;
 
         public event EventHandler<GameViewState>? GameStateUpdated;
