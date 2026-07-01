@@ -82,6 +82,32 @@ public sealed class SocketClientConnectionTests
     }
 
     [Fact]
+    public async Task ReceiveLoop_reports_protocol_error_when_payload_length_exceeds_maximum()
+    {
+        await using var server = new LoopbackServer();
+        await using var client = new SocketClientConnection();
+        var error = new TaskCompletionSource<Exception>(
+            TaskCreationOptions.RunContinuationsAsynchronously);
+
+        client.ConnectionError += (_, ex) => error.TrySetResult(ex);
+
+        Task<Socket> acceptedClient = server.AcceptSocketAsync();
+        await client.ConnectAsync(IPAddress.Loopback.ToString(), server.Port, CancellationToken.None);
+        using Socket serverSocket = await acceptedClient;
+
+        // Gửi header chỉ độ dài 2 MB (lớn hơn MaxPayloadLength = 1 MB) (Issue #61)
+        byte[] frame = new byte[4];
+        BinaryPrimitives.WriteInt32BigEndian(frame.AsSpan(0, 4), 2 * 1024 * 1024);
+
+        await serverSocket.SendAsync(frame, SocketFlags.None);
+
+        Exception exception = await error.Task.WaitAsync(TimeSpan.FromSeconds(2));
+
+        Assert.IsType<InvalidOperationException>(exception);
+        Assert.Contains("vượt quá giới hạn tối đa", exception.Message);
+    }
+
+    [Fact]
     public async Task Concurrent_SendAsync_calls_do_not_interleave_frames()
     {
         await using var server = new LoopbackServer();
