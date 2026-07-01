@@ -18,6 +18,7 @@ public sealed class GameMessageDispatcher : IMessageDispatcher
 
 
     private readonly System.Collections.Concurrent.ConcurrentDictionary<Guid, string> _playerNames = new();
+    private readonly System.Collections.Concurrent.ConcurrentDictionary<Guid, DateTime> _lastRequestTimes = new();
 
     public GameMessageDispatcher(
         RoomManager roomManager,
@@ -36,6 +37,15 @@ public sealed class GameMessageDispatcher : IMessageDispatcher
     {
         Console.WriteLine(
             $"[DISPATCH] Client={session.Id} Type={message.Type}");
+
+        // Rate limiting per-session: giới hạn tối đa 10 requests/giây (khoảng cách tối thiểu 100ms) (Issue #53)
+        var now = DateTime.UtcNow;
+        if (_lastRequestTimes.TryGetValue(session.Id, out var lastTime) && (now - lastTime).TotalMilliseconds < 100)
+        {
+            await SendErrorAsync(session, "Rate limit exceeded.", cancellationToken);
+            return;
+        }
+        _lastRequestTimes[session.Id] = now;
 
         switch (message.Type)
         {
@@ -70,6 +80,7 @@ public sealed class GameMessageDispatcher : IMessageDispatcher
     public async Task HandleDisconnectAsync(Guid sessionId)
     {
         _playerNames.TryRemove(sessionId, out _);
+        _lastRequestTimes.TryRemove(sessionId, out _); // Dọn dẹp bộ giới hạn tốc độ (Issue #53)
 
         GameRoom? room = _roomManager.HandleDisconnect(sessionId);
         if (room is null) return;

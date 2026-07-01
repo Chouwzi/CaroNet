@@ -5,7 +5,7 @@ namespace CaroNet.Shared.Protocol;
 
 public static class ProtocolFrameCodec
 {
-    private const int MaxPayloadLength = 1024 * 1024; // 1 MB
+    public const int MaxPayloadLength = 1024 * 1024; // 1 MB
 
     public static byte[] Encode(MessageEnvelope envelope)
     {
