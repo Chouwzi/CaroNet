@@ -170,6 +170,12 @@ public sealed class SocketClientConnection : IClientConnection
             throw new InvalidOperationException("Protocol frame có độ dài âm.");
         }
 
+        // Kiểm tra giới hạn độ dài payload để tránh OutOfMemoryException (Issue #61)
+        if (payloadLength > ProtocolFrameCodec.MaxPayloadLength)
+        {
+            throw new InvalidOperationException($"Độ dài gói tin {payloadLength} bytes vượt quá giới hạn tối đa ({ProtocolFrameCodec.MaxPayloadLength} bytes).");
+        }
+
         byte[] payload = await ReadExactlyAsync(payloadLength, cancellationToken);
         byte[] frame = new byte[4 + payloadLength];
 
