@@ -346,9 +346,20 @@ public sealed class SocketGameClientService : IGameClientService, IAsyncDisposab
                 _board = board!;
             }
 
-            _serverError = FirstNonEmpty(
-                GetString(message.Payload, "message"),
-                "Ván đấu đã kết thúc.");
+            string reason = GetString(message.Payload, "reason");
+
+
+
+if (reason == "opponent_disconnected")
+{
+    _serverError = "Đối thủ đã ngắt kết nối. Bạn thắng!";
+}
+else
+{
+    _serverError = FirstNonEmpty(
+        GetString(message.Payload, "message"),
+        "Ván đấu đã kết thúc.");
+}
         }
 
         PublishState();
