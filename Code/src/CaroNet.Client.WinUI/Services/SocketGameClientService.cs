@@ -11,6 +11,9 @@ namespace CaroNet.Client.WinUI.Services;
 
 public sealed class SocketGameClientService : IGameClientService, IAsyncDisposable
 {
+    private readonly List<(int Row, int Col)> _winningCells = new();
+    public List<(int Row, int Col)> WinningCells => _winningCells;
+
     private const int BoardSize = 15;
     private static readonly TimeSpan RequestTimeout = TimeSpan.FromSeconds(10);
 
@@ -193,6 +196,9 @@ public sealed class SocketGameClientService : IGameClientService, IAsyncDisposab
                 case MessageType.GameEnded:
                     ApplyGameEnded(args.Message);
                     break;
+                case MessageType.RematchAcepted:
+                    ApplyRematchAccepted(args.Message);
+                    break;
             }
         }
         catch (Exception ex)
@@ -238,7 +244,6 @@ public sealed class SocketGameClientService : IGameClientService, IAsyncDisposab
                 : $"Đã vào phòng {_roomId}";
             _serverError = string.Empty;
 
-            // GameStarted gửi kèm board và lượt đi
             if (TryReadBoard(message.Payload, out string[,]? board))
             {
                 _board = board!;
@@ -254,7 +259,6 @@ public sealed class SocketGameClientService : IGameClientService, IAsyncDisposab
     {
         lock (_stateLock)
         {
-            // Board server gửi là nguồn dữ liệu chính; client chỉ render lại snapshot này.
             if (TryReadBoard(message.Payload, out string[,]? board))
             {
                 _board = board!;
@@ -293,6 +297,20 @@ public sealed class SocketGameClientService : IGameClientService, IAsyncDisposab
             _serverError = FirstNonEmpty(
                 GetString(message.Payload, "message"),
                 "Ván đấu đã kết thúc.");
+
+            _winningCells.Clear();
+            if (message.Payload.HasValue && TryGetProperty(message.Payload, "winningCells", out var winningProp) && winningProp.ValueKind == JsonValueKind.Array)
+            {
+                foreach (var cellElement in winningProp.EnumerateArray())
+                {
+                    int row = cellElement.TryGetProperty("Row", out var r) ? r.GetInt32() : (cellElement.TryGetProperty("row", out var r2) ? r2.GetInt32() : -1);
+                    int col = cellElement.TryGetProperty("Col", out var c) ? c.GetInt32() : (cellElement.TryGetProperty("col", out var c2) ? c2.GetInt32() : -1);
+                    if (row != -1 && col != -1)
+                    {
+                        _winningCells.Add((row, col));
+                    }
+                }
+            }
         }
 
         PublishState();
@@ -451,7 +469,6 @@ public sealed class SocketGameClientService : IGameClientService, IAsyncDisposab
             return false;
         }
 
-        // Server có thể serialize bằng camelCase hoặc PascalCase tùy layer.
         foreach (JsonProperty jsonProperty in objectPayload.EnumerateObject())
         {
             if (string.Equals(
@@ -485,5 +502,38 @@ public sealed class SocketGameClientService : IGameClientService, IAsyncDisposab
     public async ValueTask DisposeAsync()
     {
         await _connection.DisposeAsync();
+    }
+
+    private void ApplyRematchAccepted(MessageEnvelope message)
+    {
+        lock (_stateLock)
+        {
+            _winningCells.Clear();
+
+            _playerSymbol = FirstNonEmpty(
+                GetString(message.Payload, "playerSymbol"),
+                GetString(message.Payload, "yourSymbol"),
+                GetString(message.Payload, "symbol"),
+                _playerSymbol);
+
+            _currentTurnSymbol = ResolveCurrentTurnSymbol(message.Payload);
+            _board = InitEmptyBoard();
+            _serverError = string.Empty;
+            _connectionStatus = "Trận đấu mới đã bắt đầu!";
+        }
+
+        PublishState();
+    }
+    public async Task SendRematchRequestAsync(CancellationToken cancellationToken = default)
+    {
+        await _connection.SendAsync(
+            new MessageEnvelope
+            {
+                Type = MessageType.Rematch,
+                RoomId = EmptyToNull(_roomId),
+                PlayerId = EmptyToNull(_playerId),
+                Payload = JsonSerializer.SerializeToElement(new { })
+            },
+            cancellationToken);
     }
 }
