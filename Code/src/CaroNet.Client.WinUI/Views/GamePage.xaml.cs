@@ -1,4 +1,5 @@
 using CaroNet.Client.WinUI.ViewModels;
+using CaroNet.Shared.Game;
 using Microsoft.UI;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
@@ -19,12 +20,63 @@ public sealed partial class GamePage : Page
 
     private void GamePage_Loaded(object sender, RoutedEventArgs e)
     {
-        _viewModel = DataContext as GameViewModel;
-
-        if (_viewModel != null)
+        // Khởi tạo ViewModel và tạo bàn cờ (giống develop)
+        if (DataContext is GameViewModel viewModel)
         {
+            _viewModel = viewModel;
             _viewModel.PropertyChanged += ViewModel_PropertyChanged;
-            UpdateTurnUI();
+
+            BuildBoard();           // Tạo bàn cờ 15x15
+            UpdateTurnUI();         // Cập nhật màu theo lượt lần đầu
+        }
+    }
+
+    /// <summary>
+    /// Tạo bàn cờ 15x15 (giữ nguyên từ develop)
+    /// </summary>
+    private void BuildBoard()
+    {
+        if (_viewModel == null) return;
+
+        BoardGrid.Children.Clear();
+        BoardGrid.RowDefinitions.Clear();
+        BoardGrid.ColumnDefinitions.Clear();
+
+        for (int i = 0; i < GameViewModel.BoardSize; i++)
+        {
+            BoardGrid.RowDefinitions.Add(new RowDefinition { Height = new GridLength(1, GridUnitType.Star) });
+            BoardGrid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
+        }
+
+        for (int row = 0; row < GameViewModel.BoardSize; row++)
+        {
+            for (int col = 0; col < GameViewModel.BoardSize; col++)
+            {
+                var button = new Button
+                {
+                    Content = "",
+                    FontSize = 22,
+                    FontWeight = Microsoft.UI.Text.FontWeights.Bold,
+                    HorizontalAlignment = HorizontalAlignment.Stretch,
+                    VerticalAlignment = VerticalAlignment.Stretch,
+                    Margin = new Thickness(1),
+                    Tag = new BoardPosition(row, col)
+                };
+
+                button.Click += BoardButton_Click;
+
+                Grid.SetRow(button, row);
+                Grid.SetColumn(button, col);
+                BoardGrid.Children.Add(button);
+            }
+        }
+    }
+
+    private async void BoardButton_Click(object sender, RoutedEventArgs e)
+    {
+        if (sender is Button button && button.Tag is BoardPosition position && _viewModel != null)
+        {
+            await _viewModel.MakeMoveAsync(position.Row, position.Column);
         }
     }
 
@@ -43,7 +95,7 @@ public sealed partial class GamePage : Page
 
         bool isMyTurn = _viewModel.IsMyTurn;
 
-        
+        // === Đổi màu Banner ===
         if (TurnBanner != null)
         {
             if (isMyTurn)
@@ -58,7 +110,7 @@ public sealed partial class GamePage : Page
             }
         }
 
-        
+        // === Đổi màu viền bảng cờ ===
         var boardBorder = BoardGrid?.Parent as Border;
         if (boardBorder != null)
         {
@@ -67,7 +119,7 @@ public sealed partial class GamePage : Page
                 : new SolidColorBrush(ColorHelper.FromArgb(255, 158, 158, 158));
         }
 
-        
+        // === Bật/Tắt ô cờ ===
         if (BoardGrid != null)
         {
             foreach (var child in BoardGrid.Children)
