@@ -69,25 +69,35 @@ public sealed class GameMessageDispatcher : IMessageDispatcher
         GameRoom? room = _roomManager.HandleDisconnect(sessionId);
         if (room is null) return;
 
-        // Báo đối thủ biết
-        foreach (var player in room.GetPlayers())
-        {
-            try
+        // Nếu vẫn còn người chơi trong phòng thì người đó thắng
+    foreach (var player in room.GetPlayers())
+    {
+    try
+    {
+        Console.WriteLine(
+        $"[DISCONNECT] Sending GameEnded to {player.Id}");
+        await player.SendAsync(
+            new MessageEnvelope
             {
-                await player.SendAsync(new MessageEnvelope
+                Type = MessageType.GameEnded,
+                RoomId = room.RoomId,
+                Payload = JsonSerializer.SerializeToElement(new GameEndedPayload
                 {
-                    Type = MessageType.Error,
-                    Payload = JsonSerializer.SerializeToElement(new
-                    {
-                        message = "Đối thủ đã ngắt kết nối."
-                    })
-                }, CancellationToken.None);
-            }
-            catch
-            {
-
-            }
-        }
+                 WinnerPlayerId = player.Id.ToString(),
+                 Reason = "opponent_disconnected",
+                 Board = room.BuildBoardPayload()
+                 })
+            },
+            CancellationToken.None);
+             Console.WriteLine(
+            $"[DISCONNECT] GameEnded sent to {player.Id}");
+    }
+    catch (Exception ex)
+    {
+        Console.WriteLine(
+            $"[DISCONNECT] Failed to notify player {player.Id}: {ex.Message}");
+    }
+    }
     }
 
     private async Task HandleHelloAsync(
@@ -352,12 +362,13 @@ public sealed class GameMessageDispatcher : IMessageDispatcher
         {
             Type = MessageType.GameEnded,
             RoomId = room.RoomId,
-            Payload = JsonSerializer.SerializeToElement(new
+            Payload = JsonSerializer.SerializeToElement(
+             new GameEndedPayload
             {
-                status = status.ToString(),
-                winnerId,
-                board = room.BuildBoardPayload()
-            })
+            WinnerPlayerId = winnerId,
+            Reason = null,
+             Board = room.BuildBoardPayload()
+             })
         };
 
         foreach (var player in room.GetPlayers())
