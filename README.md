@@ -289,16 +289,20 @@ Chi tiết trong [Code/docs/protocol.md](Code/docs/protocol.md).
 - [x] Test thủ công 2 client trên cùng máy.
 - [x] Log lỗi network, parse message và state sync.
 
-## Phân công nhóm
+## Phân công nhóm & Đóng góp (Contribution Matrix)
 
-| Thành viên | GitHub | Mảng chính | Issues giao |
-|------------|--------|------------|-------------|
-| Nguyễn Trần Đình Chương | @Chouwzi | Leader, UI, Server, Fix bugs | [#47](../../issues/47) + review tất cả PRs |
-| Nguyễn Đức Thành | @NguyenDucThanh123 | Protocol, Server | [#41](../../issues/41), [#44](../../issues/44) |
-| Trọng Nhân | @TrongNhan0510 | Game logic | [#40](../../issues/40), [#46](../../issues/46), [#48](../../issues/48) |
-| Bao Nguyễn Trường | @Baong123 | Storage | [#42](../../issues/42) |
-| Nguyễn Hoàng Phúc | @phucnh8317-coder | Client network | [#38](../../issues/38), [#45](../../issues/45) |
-| Nguyễn Duy Tân | @tannd2333 | UI contract | [#39](../../issues/39), [#43](../../issues/43) |
+Chi tiết phân công công việc, mã hóa nhánh, mã hóa issue và phần trăm đóng góp của các thành viên trong nhóm:
+
+| Thành viên | Vai trò & Mảng chính | Issues đảm nhiệm | Nhánh (Branch) chính | Đóng góp (%) |
+|---|---|---|---|---|
+| **Nguyễn Trần Đình Chương**<br>(@Chouwzi) | **Leader**<br>- Thiết kế kiến trúc tổng thể, thiết lập CI/CD pipeline và review PR.<br>- Xử lý lỗi đồng thời/race conditions, vá lỗi bảo mật (OutOfMemory #61, Rate Limiting #53). | [#47](../../issues/47), [#53](../../issues/53), [#61](../../issues/61), [#64](../../issues/64) | `develop`, `main`, `feature/61-53-security-fixes`, `feature/64-fix-room-race-condition`, `docs/47-qa-readme-update` | **35%** |
+| **Nguyễn Đức Thành**<br>(@NguyenDucThanh123) | **Protocol & Server Infra**<br>- Định nghĩa cấu trúc protocol envelope JSON.<br>- Xây dựng bộ mã hóa/giải mã length-prefix và hạ tầng Socket Server. | [#41](../../issues/41), [#44](../../issues/44) | `feature/3-protocol-codec`, `feature/4-socket-server` | **15%** |
+| **Bao Nguyễn Trường**<br>(@Baong123) | **Storage & UI History**<br>- Thiết kế database SQLite, Dapper repositories lưu lịch sử và thống kê.<br>- Xây dựng trang giao diện Lịch sử trận đấu trong WinUI. | [#42](../../issues/42) | `feature/7-match-history-storage`, `feature/17-history-and-records-db`, `feature/42-match-history-ui` | **15%** |
+| **Nguyễn Hoàng Phúc**<br>(@phucnh8317-coder) | **Client Net & UI Chat**<br>- Xây dựng Client Socket receive loop bất đồng bộ và cơ chế event.<br>- Wiring tính năng chat room và lưu trữ thiết lập cấu hình client. | [#38](../../issues/38), [#45](../../issues/45) | `feature/5-client-network`, `feature/38-room-chat`, `feature/45-persist-player-settings` | **15%** |
+| **Nguyễn Duy Tân**<br>(@tannd2333) | **UI Contract & Turn Indicator**<br>- Thiết kế giao diện Menu chính, bàn cờ Caro 20x20.<br>- Thực hiện cơ chế Turn Indicator UX (chỉ báo lượt đi). | [#39](../../issues/39), [#43](../../issues/43) | `feature/6-minimal-playable-match-screen`, `feature/43-turn-indicator` | **10%** |
+| **Trọng Nhân**<br>(@TrongNhan0510) | **Game Logic & Dialogs**<br>- Phát triển Caro Rule Engine (kiểm tra thắng/thua 5 quân liên tiếp).<br>- Tạo dialog thông báo kết quả ván đấu (Win/Loss/Draw). | [#40](../../issues/40), [#46](../../issues/46), [#48](../../issues/48) | `feature/caro-game-logic` | **10%** |
+
+* **Tài liệu câu hỏi ôn tập vấn đáp:** Nhóm đã chuẩn bị sẵn tài liệu ôn tập câu hỏi vấn đáp mẫu chi tiết cho từng thành viên (5 câu/người) tại: [Tài liệu ôn tập vấn đáp](Code/docs/qa-vandap.md).
 
 ## Quy ước phát triển
 
