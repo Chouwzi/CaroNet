@@ -3,7 +3,7 @@ using CaroNet.Server.Host.Networking;
 using CaroNet.Server.Host.Services;
 using CaroNet.Storage.Database;
 using CaroNet.Storage.Matches;
-using CaroNet.Storage.Statistics; 
+using CaroNet.Storage.Statistics;
 
 var cancellationTokenSource = new CancellationTokenSource();
 Console.CancelKeyPress += (sender, eventArgs) =>
@@ -19,12 +19,11 @@ dbInitializer.Initialize();
 Console.WriteLine("[SERVER] Database initialized.");
 
 var matchStore = new SqliteMatchHistoryStore(dbPath);
-var playerRecordStore = new SqlitePlayerRecordStore(dbPath); // Đã khởi tạo
+var playerRecordStore = new SqlitePlayerRecordStore(dbPath);
 
 var registry = new ClientSessionRegistry();
 var roomManager = new RoomManager();
 
-// Đã cập nhật constructor để truyền playerRecordStore
 var dispatcher = new GameMessageDispatcher(
     roomManager,
     registry,

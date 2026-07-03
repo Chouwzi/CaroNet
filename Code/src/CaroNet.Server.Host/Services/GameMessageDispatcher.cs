@@ -4,7 +4,6 @@ using System.Linq;
 using System.Text.Json;
 using System.Threading;
 using System.Threading.Tasks;
-
 using CaroNet.Server.Host.GameRooms;
 using CaroNet.Server.Host.Networking;
 using CaroNet.Shared.Game;
@@ -12,8 +11,6 @@ using CaroNet.Shared.Protocol;
 using CaroNet.Shared.Protocol.Payloads;
 using CaroNet.Storage.Matches;
 using CaroNet.Storage.Statistics;
-
-
 
 namespace CaroNet.Server.Host.Services;
 
@@ -23,7 +20,6 @@ public sealed class GameMessageDispatcher : IMessageDispatcher
     private readonly RoomManager _roomManager;
     private readonly ClientSessionRegistry _registry;
     private readonly IMatchHistoryStore? _matchHistoryStore;
-
     private readonly IPlayerRecordStore? _playerRecordStore;
 
     private readonly System.Collections.Concurrent.ConcurrentDictionary<Guid, string> _playerNames = new();
@@ -33,12 +29,12 @@ public sealed class GameMessageDispatcher : IMessageDispatcher
         RoomManager roomManager,
         ClientSessionRegistry registry,
         IMatchHistoryStore? matchHistoryStore = null,
-        IPlayerRecordStore? playerRecordStore = null) // Thêm tham số này
+        IPlayerRecordStore? playerRecordStore = null)
     {
         _roomManager = roomManager;
         _registry = registry;
         _matchHistoryStore = matchHistoryStore;
-        _playerRecordStore = playerRecordStore; // Thêm dòng này
+        _playerRecordStore = playerRecordStore;
     }
 
     public async Task DispatchAsync(
@@ -527,11 +523,14 @@ public sealed class GameMessageDispatcher : IMessageDispatcher
 
     private async Task SaveMatchHistoryAsync(GameRoom room, GameStatus status)
     {
-        // Lấy tên từ Session ID nếu có, nếu không thì lấy từ room (fallback)
-        string playerXName = room.PlayerX != null && _playerNames.TryGetValue(room.PlayerX.Id, out var nameX) ? nameX : (room.PlayerXName ?? "Player X");
-        string playerOName = room.PlayerO != null && _playerNames.TryGetValue(room.PlayerO.Id, out var nameO) ? nameO : (room.PlayerOName ?? "Player O");
+        string playerXName = room.PlayerX is not null && _playerNames.TryGetValue(room.PlayerX.Id, out var nameX)
+            ? nameX
+            : room.PlayerXName ?? "Player X";
 
-        // 1. Lưu lịch sử trận đấu (Chỉ chạy khi _matchHistoryStore khác null)
+        string playerOName = room.PlayerO is not null && _playerNames.TryGetValue(room.PlayerO.Id, out var nameO)
+            ? nameO
+            : room.PlayerOName ?? "Player O";
+
         if (_matchHistoryStore is not null)
         {
             try
@@ -561,7 +560,7 @@ public sealed class GameMessageDispatcher : IMessageDispatcher
                     matchMoves);
 
                 await _matchHistoryStore.SaveMatchAsync(record);
-                Console.WriteLine($"[HISTORY] Saved match {record.MatchId} for {playerXName} vs {playerOName}");
+                Console.WriteLine($"[HISTORY] Saved match {record.MatchId} in room {room.RoomId}");
             }
             catch (Exception ex)
             {
@@ -569,7 +568,6 @@ public sealed class GameMessageDispatcher : IMessageDispatcher
             }
         }
 
-        // 2. Tự động cập nhật thống kê người chơi (Issue #63)
         if (_playerRecordStore is not null)
         {
             try
@@ -585,8 +583,8 @@ public sealed class GameMessageDispatcher : IMessageDispatcher
         }
     }
 
-        private async Task UpdatePlayerStatsAsync(string playerName, bool isWinner, bool isDraw)
-        {
+    private async Task UpdatePlayerStatsAsync(string playerName, bool isWinner, bool isDraw)
+    {
         if (_playerRecordStore == null) return;
 
         var record = await _playerRecordStore.GetAsync(playerName);
@@ -610,10 +608,8 @@ public sealed class GameMessageDispatcher : IMessageDispatcher
 
         var updatedRecord = new PlayerRecord(playerName, wins, losses, draws);
         await _playerRecordStore.SaveAsync(updatedRecord);
-        Console.WriteLine($"[STATISTICS] Updated stats for {playerName}: {wins}W - {losses}L - {draws}D");
+        Console.WriteLine($"[STATISTICS] Updated {playerName}: {wins}W - {losses}L - {draws}D");
     }
-
-
 
     private async Task HandleRematchAsync(
         ClientSession session,
