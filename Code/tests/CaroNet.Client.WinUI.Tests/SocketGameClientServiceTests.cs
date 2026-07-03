@@ -217,6 +217,31 @@ public sealed class SocketGameClientServiceTests
         Assert.Equal("Mất kết nối server", states.Last().ConnectionStatus);
     }
 
+    [Fact]
+    public void ChatReceived_PublishesSenderAndMessage()
+    {
+        var connection = new FakeClientConnection();
+        var service = new SocketGameClientService(connection);
+        var receivedMessages = new List<CaroNet.Shared.Protocol.Payloads.ChatReceivedPayload>();
+
+        service.ChatReceived += (_, payload) => receivedMessages.Add(payload);
+
+        connection.RaiseMessage(new MessageEnvelope
+        {
+            Type = MessageType.ChatReceived,
+            Payload = JsonSerializer.SerializeToElement(new
+            {
+                senderName = "Hệ thống",
+                message = "Đối thủ muốn chơi lại!",
+                timestamp = DateTime.UtcNow
+            })
+        });
+
+        var message = Assert.Single(receivedMessages);
+        Assert.Equal("Hệ thống", message.SenderName);
+        Assert.Equal("Đối thủ muốn chơi lại!", message.Message);
+    }
+
     private static string[][] CreateEmptyBoard()
     {
         return Enumerable.Range(0, GameViewModel.BoardSize)
