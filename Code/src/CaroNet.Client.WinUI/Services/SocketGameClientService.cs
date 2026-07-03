@@ -335,15 +335,20 @@ public sealed class SocketGameClientService : IGameClientService, IAsyncDisposab
 
     private void ApplyServerError(MessageEnvelope message)
     {
+        string error;
+
         lock (_stateLock)
         {
-            _serverError = FirstNonEmpty(
+            error = FirstNonEmpty(
                 GetString(message.Payload, "message"),
                 GetString(message.Payload, "error"),
                 GetString(message.Payload, "reason"),
                 "Server từ chối yêu cầu.");
+
+            _serverError = error;
         }
 
+        _roomJoinedCompletion?.TrySetException(new InvalidOperationException(error));
         PublishState();
     }
 
