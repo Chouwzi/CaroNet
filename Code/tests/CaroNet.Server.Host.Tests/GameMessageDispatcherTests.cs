@@ -1,13 +1,16 @@
 using System;
 using System.Net;
 using System.Net.Sockets;
+using System.Reflection;
 using System.Text.Json;
 using System.Threading;
 using System.Threading.Tasks;
 using CaroNet.Server.Host.GameRooms;
 using CaroNet.Server.Host.Networking;
 using CaroNet.Server.Host.Services;
+using CaroNet.Shared.Game;
 using CaroNet.Shared.Protocol;
+using CaroNet.Storage.Statistics;
 using Xunit;
 
 namespace CaroNet.Server.Host.Tests
@@ -106,11 +109,120 @@ namespace CaroNet.Server.Host.Tests
             Assert.Equal("Rate limit exceeded.", message);
         }
 
+        [Fact]
+        public async Task SaveMatchHistoryAsync_ShouldUpdatePlayerRecords_WhenGameEnds()
+        {
+            var store = new InMemoryPlayerRecordStore();
+            var dispatcher = new GameMessageDispatcher(
+                new RoomManager(),
+                new ClientSessionRegistry(),
+                playerRecordStore: store);
+
+            using var playerXPair = SocketPair.Create(dispatcher);
+            using var playerOPair = SocketPair.Create(dispatcher);
+            var room = new GameRoom();
+            room.TryAddPlayer(playerXPair.ServerSession, "Alice");
+            room.TryAddPlayer(playerOPair.ServerSession, "Bob");
+
+            await InvokeSaveMatchHistoryAsync(dispatcher, room, GameStatus.XWon);
+            await InvokeSaveMatchHistoryAsync(dispatcher, room, GameStatus.Draw);
+
+            PlayerRecord? alice = await store.GetAsync("Alice");
+            PlayerRecord? bob = await store.GetAsync("Bob");
+
+            Assert.Equal(new PlayerRecord("Alice", 1, 0, 1), alice);
+            Assert.Equal(new PlayerRecord("Bob", 0, 1, 1), bob);
+        }
+
+        private static async Task InvokeSaveMatchHistoryAsync(
+            GameMessageDispatcher dispatcher,
+            GameRoom room,
+            GameStatus status)
+        {
+            MethodInfo method = typeof(GameMessageDispatcher).GetMethod(
+                "SaveMatchHistoryAsync",
+                BindingFlags.Instance | BindingFlags.NonPublic)!;
+
+            var task = (Task)method.Invoke(dispatcher, [room, status])!;
+            await task;
+        }
+
         public void Dispose()
         {
             _clientSocket.Close();
             _serverSocket.Close();
             _listener.Close();
+        }
+
+        private sealed class InMemoryPlayerRecordStore : IPlayerRecordStore
+        {
+            private readonly Dictionary<string, PlayerRecord> _records = new(StringComparer.OrdinalIgnoreCase);
+
+            public Task SaveAsync(PlayerRecord record, CancellationToken cancellationToken = default)
+            {
+                _records[record.PlayerName] = record;
+                return Task.CompletedTask;
+            }
+
+            public Task<PlayerRecord?> GetAsync(string playerName, CancellationToken cancellationToken = default)
+            {
+                _records.TryGetValue(playerName, out PlayerRecord? record);
+                return Task.FromResult(record);
+            }
+
+            public Task<IReadOnlyList<PlayerRecord>> GetTopPlayersAsync(
+                int limit,
+                CancellationToken cancellationToken = default)
+            {
+                IReadOnlyList<PlayerRecord> records = _records.Values.Take(limit).ToList();
+                return Task.FromResult(records);
+            }
+        }
+
+        private sealed class SocketPair : IDisposable
+        {
+            private readonly Socket _listener;
+            private readonly Socket _clientSocket;
+            private readonly Socket _serverSocket;
+
+            private SocketPair(
+                Socket listener,
+                Socket clientSocket,
+                Socket serverSocket,
+                ClientSession serverSession)
+            {
+                _listener = listener;
+                _clientSocket = clientSocket;
+                _serverSocket = serverSocket;
+                ServerSession = serverSession;
+            }
+
+            public ClientSession ServerSession { get; }
+
+            public static SocketPair Create(GameMessageDispatcher dispatcher)
+            {
+                var listener = new Socket(AddressFamily.InterNetwork, SocketType.Stream, ProtocolType.Tcp);
+                listener.Bind(new IPEndPoint(IPAddress.Loopback, 0));
+                listener.Listen(1);
+
+                var clientSocket = new Socket(AddressFamily.InterNetwork, SocketType.Stream, ProtocolType.Tcp);
+                var acceptTask = listener.AcceptAsync();
+                clientSocket.Connect(listener.LocalEndPoint!);
+                Socket serverSocket = acceptTask.GetAwaiter().GetResult();
+
+                return new SocketPair(
+                    listener,
+                    clientSocket,
+                    serverSocket,
+                    new ClientSession(serverSocket, dispatcher));
+            }
+
+            public void Dispose()
+            {
+                _clientSocket.Dispose();
+                _serverSocket.Dispose();
+                _listener.Dispose();
+            }
         }
     }
 }
