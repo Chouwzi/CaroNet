@@ -1,5 +1,6 @@
 using CaroNet.Client.WinUI.Services;
 using CaroNet.Client.WinUI.ViewModels;
+using Microsoft.UI;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
 using Microsoft.UI.Xaml.Data;
@@ -11,7 +12,6 @@ namespace CaroNet.Client.WinUI.Views;
 
 public sealed partial class GamePage : Page
 {
-
     private T? FindVisualChild<T>(DependencyObject element) where T : DependencyObject
     {
         for (int i = 0; i < VisualTreeHelper.GetChildrenCount(element); i++)
@@ -24,6 +24,7 @@ public sealed partial class GamePage : Page
         }
         return null;
     }
+
     private readonly GameViewModel _viewModel;
 
     public GamePage()
@@ -43,12 +44,19 @@ public sealed partial class GamePage : Page
         EmptyStateTextBlock.Visibility = Visibility.Visible;
 
         BuildBoard();
+        UpdateTurnUI();
     }
 
     private async void ViewModel_PropertyChanged(
         object? sender,
         System.ComponentModel.PropertyChangedEventArgs e)
     {
+        if (e.PropertyName == nameof(GameViewModel.IsMyTurn) ||
+            e.PropertyName == nameof(GameViewModel.TurnMessage))
+        {
+            UpdateTurnUI();
+        }
+
         if (e.PropertyName != nameof(GameViewModel.ServerError))
         {
             return;
@@ -152,9 +160,57 @@ public sealed partial class GamePage : Page
     // Sự kiện người chơi click vào một ô trên bàn cờ để đánh X / O
     private async void BoardCellButton_Click(object sender, RoutedEventArgs e)
     {
+        if (!_viewModel.IsMyTurn)
+        {
+            return;
+        }
+
         if (sender is Button { DataContext: BoardCellViewModel cell })
         {
             await _viewModel.MakeMoveAsync(cell.Row, cell.Column);
+        }
+    }
+
+    private void UpdateTurnUI()
+    {
+        bool isMyTurn = _viewModel.IsMyTurn;
+
+        // Đổi màu banner theo lượt hiện tại.
+        if (TurnBanner != null)
+        {
+            if (isMyTurn)
+            {
+                TurnBanner.Background = new SolidColorBrush(ColorHelper.FromArgb(255, 232, 245, 233));
+                TurnBanner.BorderBrush = new SolidColorBrush(ColorHelper.FromArgb(255, 165, 214, 167));
+            }
+            else
+            {
+                TurnBanner.Background = new SolidColorBrush(ColorHelper.FromArgb(255, 245, 245, 245));
+                TurnBanner.BorderBrush = new SolidColorBrush(ColorHelper.FromArgb(255, 189, 189, 189));
+            }
+        }
+
+        // Đổi màu viền bàn cờ theo lượt hiện tại.
+        var boardBorder = BoardGrid?.Parent as Border;
+        if (boardBorder != null)
+        {
+            boardBorder.BorderBrush = isMyTurn
+                ? new SolidColorBrush(ColorHelper.FromArgb(255, 76, 175, 80))
+                : new SolidColorBrush(ColorHelper.FromArgb(255, 158, 158, 158));
+        }
+
+        // Khóa ô cờ khi chưa tới lượt.
+        if (BoardGrid != null)
+        {
+            foreach (var child in BoardGrid.Children)
+            {
+                if (child is Button button)
+                {
+                    button.IsEnabled = isMyTurn;
+                    button.IsHitTestVisible = isMyTurn;
+                    button.Opacity = isMyTurn ? 1.0 : 0.65;
+                }
+            }
         }
     }
 }

@@ -96,7 +96,6 @@ public sealed class GameViewModel : INotifyPropertyChanged
     public event PropertyChangedEventHandler? PropertyChanged;
     public ObservableCollection<BoardCellViewModel> BoardCells { get; } = [];
 
-
     public void SetDispatcher(Action<Action> dispatcher)
     {
         _dispatchToUI = dispatcher;
@@ -138,6 +137,29 @@ public sealed class GameViewModel : INotifyPropertyChanged
         private set => SetProperty(ref _serverError, value);
     }
 
+    public bool IsMyTurn =>
+        !string.IsNullOrWhiteSpace(RoomId) &&
+        !string.IsNullOrWhiteSpace(PlayerSymbol) &&
+        PlayerSymbol != "?" &&
+        CurrentTurnSymbol == PlayerSymbol;
+
+    public string TurnMessage
+    {
+        get
+        {
+            if (string.IsNullOrWhiteSpace(RoomId) ||
+                string.IsNullOrWhiteSpace(PlayerSymbol) ||
+                PlayerSymbol == "?")
+            {
+                return "Đang chờ đối thủ...";
+            }
+
+            return IsMyTurn
+                ? "🎯 Lượt của bạn!"
+                : "⏳ Đợi đối thủ...";
+        }
+    }
+
     public async Task MakeMoveAsync(int row, int column)
     {
         try
@@ -169,7 +191,6 @@ public sealed class GameViewModel : INotifyPropertyChanged
 
     private void GameClient_GameStateUpdated(object? sender, GameViewState state)
     {
-        
         SafeExecuteOnUI(() => ApplyState(state));
     }
 
@@ -193,6 +214,8 @@ public sealed class GameViewModel : INotifyPropertyChanged
 
         PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(IsChatInputEnabled)));
         PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(IsSendButtonEnabled)));
+        PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(IsMyTurn)));
+        PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(TurnMessage)));
     }
 
     private void SetProperty<T>(ref T field, T value, [CallerMemberName] string? propertyName = null)
