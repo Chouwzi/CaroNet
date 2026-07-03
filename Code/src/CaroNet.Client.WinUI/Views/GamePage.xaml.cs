@@ -1,8 +1,10 @@
 using CaroNet.Client.WinUI.Services;
 using CaroNet.Client.WinUI.ViewModels;
+using Microsoft.UI;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
 using Microsoft.UI.Xaml.Data;
+using Microsoft.UI.Xaml.Media;
 using System;
 using System.Linq;
 using System.Threading.Tasks;
@@ -16,43 +18,96 @@ public sealed partial class GamePage : Page
 
     public GamePage()
     {
-        InitializeComponent();
+        this.InitializeComponent();
 
         _viewModel = new GameViewModel(AppServices.GameClient);
+        this.DataContext = _viewModel;
 
         _viewModel.SetDispatcher(action => DispatcherQueue.TryEnqueue(
             Microsoft.UI.Dispatching.DispatcherQueuePriority.Normal,
             () => action()));
 
-        DataContext = _viewModel;
+        _viewModel.ChatMessages.CollectionChanged += ChatMessages_CollectionChanged;
+        _viewModel.PropertyChanged += ViewModel_PropertyChanged;
+
+        EmptyStateTextBlock.Visibility = Visibility.Visible;
+
         BuildBoard();
+        UpdateTurnUI();
+    }
 
-        _viewModel.PropertyChanged += (sender, args) =>
+    private async void ViewModel_PropertyChanged(
+        object? sender,
+        System.ComponentModel.PropertyChangedEventArgs e)
+    {
+        if (e.PropertyName == nameof(GameViewModel.IsMyTurn) ||
+            e.PropertyName == nameof(GameViewModel.TurnMessage) ||
+            e.PropertyName == nameof(GameViewModel.IsGameEnded) ||
+            e.PropertyName == nameof(GameViewModel.ConnectionStatus))
         {
-            if (args.PropertyName == nameof(GameViewModel.ConnectionStatus) || args.PropertyName == nameof(GameViewModel.ServerError))
-            {
-                if ((_viewModel.ConnectionStatus == "Trò chơi kết thúc"
-                    || _viewModel.ServerError == "Ván đấu đã kết thúc.")
-                    && !_gameEndDialogShowing)
-                {
-                    _gameEndDialogShowing = true;
+            UpdateTurnUI();
+        }
 
-                    DispatcherQueue.TryEnqueue(async () =>
-                    {
-                        HighlightWinningCellsOnUI();
-                        await ShowGameEndedDialogAsync();
-                        _gameEndDialogShowing = false;
-                    });
-                }
-                else if (_viewModel.ConnectionStatus.StartsWith("Trận đấu mới"))
+        if (e.PropertyName == nameof(GameViewModel.ConnectionStatus) &&
+            _viewModel.ConnectionStatus.StartsWith("Trận đấu mới", StringComparison.Ordinal))
+        {
+            BuildBoard();
+            UpdateTurnUI();
+            return;
+        }
+
+        if (e.PropertyName == nameof(GameViewModel.ServerError) &&
+            _viewModel.ServerError == "Đối thủ đã ngắt kết nối. Bạn thắng!")
+        {
+            await ShowOpponentDisconnectedDialogAsync();
+            return;
+        }
+
+        if ((e.PropertyName == nameof(GameViewModel.IsGameEnded) ||
+             e.PropertyName == nameof(GameViewModel.ConnectionStatus) ||
+             e.PropertyName == nameof(GameViewModel.ServerError)) &&
+            _viewModel.IsGameEnded &&
+            !_gameEndDialogShowing)
+        {
+            _gameEndDialogShowing = true;
+            HighlightWinningCellsOnUI();
+            await ShowGameEndedDialogAsync();
+            _gameEndDialogShowing = false;
+        }
+    }
+
+    private void ChatMessages_CollectionChanged(
+        object? sender,
+        System.Collections.Specialized.NotifyCollectionChangedEventArgs e)
+    {
+        DispatcherQueue.TryEnqueue(() =>
+        {
+            EmptyStateTextBlock.Visibility = _viewModel.ChatMessages.Count == 0
+                ? Visibility.Visible
+                : Visibility.Collapsed;
+
+            if (e.Action == System.Collections.Specialized.NotifyCollectionChangedAction.Add &&
+                ChatListView.Items.Count > 0)
+            {
+                var lastItem = ChatListView.Items[^1];
+                DispatcherQueue.TryEnqueue(() =>
                 {
-                    DispatcherQueue.TryEnqueue(() =>
+                    try
                     {
-                        BuildBoard(); 
-                    });
-                }
+                        ChatListView.ScrollIntoView(lastItem);
+                    }
+                    catch (Exception ex)
+                    {
+                        global::System.Diagnostics.Debug.WriteLine($"Auto-scroll failed: {ex.Message}");
+                    }
+                });
             }
-        };
+        });
+    }
+
+    private async void SendChatButton_Click(object sender, RoutedEventArgs e)
+    {
+        await _viewModel.SendChatAsync();
     }
 
     private void BuildBoard()
@@ -94,66 +149,128 @@ public sealed partial class GamePage : Page
             BoardGrid.Children.Add(button);
         }
     }
+
     private async void BoardCellButton_Click(object sender, RoutedEventArgs e)
     {
+        if (!_viewModel.IsMyTurn || _viewModel.IsGameEnded)
+        {
+            return;
+        }
+
         if (sender is Button { DataContext: BoardCellViewModel cell })
         {
             await _viewModel.MakeMoveAsync(cell.Row, cell.Column);
         }
     }
 
-    private void HighlightWinningCellsOnUI()
+    private void UpdateTurnUI()
     {
-        if (AppServices.GameClient is not SocketGameClientService socketService) return;
+        bool canPlay = _viewModel.IsMyTurn && !_viewModel.IsGameEnded;
 
-        var targetCells = socketService.WinningCells;
-        if (targetCells == null || targetCells.Count == 0) return;
+        if (TurnBanner != null)
+        {
+            if (canPlay)
+            {
+                TurnBanner.Background = new SolidColorBrush(ColorHelper.FromArgb(255, 232, 245, 233));
+                TurnBanner.BorderBrush = new SolidColorBrush(ColorHelper.FromArgb(255, 165, 214, 167));
+            }
+            else
+            {
+                TurnBanner.Background = new SolidColorBrush(ColorHelper.FromArgb(255, 245, 245, 245));
+                TurnBanner.BorderBrush = new SolidColorBrush(ColorHelper.FromArgb(255, 189, 189, 189));
+            }
+        }
+
+        var boardBorder = BoardGrid?.Parent as Border;
+        if (boardBorder != null)
+        {
+            boardBorder.BorderBrush = canPlay
+                ? new SolidColorBrush(ColorHelper.FromArgb(255, 76, 175, 80))
+                : new SolidColorBrush(ColorHelper.FromArgb(255, 158, 158, 158));
+        }
+
+        if (BoardGrid is null)
+        {
+            return;
+        }
 
         foreach (var child in BoardGrid.Children)
         {
-            if (child is Button button)
+            if (child is not Button button)
             {
-                int r = Grid.GetRow(button);
-                int c = Grid.GetColumn(button);
+                continue;
+            }
 
-                if (targetCells.Any(cell => cell.Row == r && cell.Col == c))
-                {
-                    button.Background = new Microsoft.UI.Xaml.Media.SolidColorBrush(Microsoft.UI.Colors.Yellow);
-                    button.FontWeight = Microsoft.UI.Text.FontWeights.Bold;
-                }
+            button.IsHitTestVisible = canPlay;
+            button.Opacity = canPlay ? 1.0 : 0.65;
+        }
+    }
+
+    private void HighlightWinningCellsOnUI()
+    {
+        if (AppServices.GameClient is not SocketGameClientService socketService ||
+            socketService.WinningCells.Count == 0)
+        {
+            return;
+        }
+
+        foreach (var child in BoardGrid.Children)
+        {
+            if (child is not Button button)
+            {
+                continue;
+            }
+
+            int row = Grid.GetRow(button);
+            int column = Grid.GetColumn(button);
+            if (socketService.WinningCells.Any(cell => cell.Row == row && cell.Col == column))
+            {
+                button.Background = new SolidColorBrush(Colors.Yellow);
+                button.FontWeight = Microsoft.UI.Text.FontWeights.Bold;
             }
         }
+    }
+
+    private async Task ShowOpponentDisconnectedDialogAsync()
+    {
+        var dialog = new ContentDialog
+        {
+            Title = "Kết thúc trận đấu",
+            Content = "Đối thủ đã ngắt kết nối. Bạn thắng!",
+            CloseButtonText = "Về menu",
+            XamlRoot = this.XamlRoot
+        };
+
+        await dialog.ShowAsync();
+        Frame.Navigate(typeof(MainMenuPage));
     }
 
     private async Task ShowGameEndedDialogAsync()
     {
         string titleText = "Hòa!";
-        var iconColor = Microsoft.UI.Colors.DarkGray;
+        var iconColor = Colors.DarkGray;
         string statusIcon = "•";
 
         if (AppServices.GameClient is SocketGameClientService socketService &&
-            socketService.WinningCells != null &&
             socketService.WinningCells.Count > 0)
         {
             var firstWinCell = socketService.WinningCells.First();
-            var matchingCell = _viewModel.BoardCells.FirstOrDefault(c => c.Row == firstWinCell.Row && c.Column == firstWinCell.Col);
+            var matchingCell = _viewModel.BoardCells.FirstOrDefault(
+                cell => cell.Row == firstWinCell.Row && cell.Column == firstWinCell.Col);
 
-            if (matchingCell != null && !string.IsNullOrEmpty(matchingCell.Mark))
+            if (matchingCell is not null && !string.IsNullOrEmpty(matchingCell.Mark))
             {
-                string winningMark = matchingCell.Mark;
-                string myMark = _viewModel.PlayerSymbol;
-
-                if (winningMark == myMark)
+                if (matchingCell.Mark == _viewModel.PlayerSymbol)
                 {
                     titleText = "Bạn thắng!";
                     statusIcon = "✓";
-                    iconColor = Microsoft.UI.Colors.Green; 
+                    iconColor = Colors.Green;
                 }
                 else
                 {
                     titleText = "Bạn thua!";
                     statusIcon = "✗";
-                    iconColor = Microsoft.UI.Colors.Red; 
+                    iconColor = Colors.Red;
                 }
             }
         }
@@ -164,70 +281,53 @@ public sealed partial class GamePage : Page
             Spacing = 12
         };
 
-        var iconTextBlock = new TextBlock
+        titleStackPanel.Children.Add(new TextBlock
         {
             Text = statusIcon,
-            Foreground = new Microsoft.UI.Xaml.Media.SolidColorBrush(iconColor),
+            Foreground = new SolidColorBrush(iconColor),
             FontSize = 26,
             FontWeight = Microsoft.UI.Text.FontWeights.Bold,
             VerticalAlignment = VerticalAlignment.Center
-        };
+        });
 
-        var textBlock = new TextBlock
+        titleStackPanel.Children.Add(new TextBlock
         {
             Text = titleText,
             FontSize = 22,
             FontWeight = Microsoft.UI.Text.FontWeights.SemiBold,
             VerticalAlignment = VerticalAlignment.Center
-        };
+        });
 
-        titleStackPanel.Children.Add(iconTextBlock);
-        titleStackPanel.Children.Add(textBlock);
-
-        string contentText = "Ván đấu đã khép lại thành công.";
-
-        if (!string.IsNullOrEmpty(_viewModel.ServerError))
-        {
-            contentText = _viewModel.ServerError;
-        }
-        
-        else if (_viewModel.ConnectionStatus == "Đối thủ muốn chơi lại!")
-        {
-            contentText = "Đối thủ muốn chơi lại! Bấm nút Chơi lại bên dưới để bắt đầu ngay.";
-        }
-        ContentDialog gameEndedDialog = new ContentDialog
+        var dialog = new ContentDialog
         {
             Title = titleStackPanel,
-            Content = contentText,
+            Content = string.IsNullOrEmpty(_viewModel.ServerError)
+                ? "Ván đấu đã khép lại thành công."
+                : _viewModel.ServerError,
             PrimaryButtonText = "Về menu",
             SecondaryButtonText = "Chơi lại",
-            XamlRoot = this.Content.XamlRoot
+            XamlRoot = this.XamlRoot
         };
 
-        ContentDialogResult result = await gameEndedDialog.ShowAsync();
+        ContentDialogResult result = await dialog.ShowAsync();
 
         if (result == ContentDialogResult.Primary)
         {
-            if (this.Frame != null)
-            {
-                this.Frame.Navigate(typeof(MainMenuPage)); 
-            }
+            Frame.Navigate(typeof(MainMenuPage));
         }
-        else if (result == ContentDialogResult.Secondary)
+        else if (result == ContentDialogResult.Secondary &&
+            AppServices.GameClient is SocketGameClientService clientService)
         {
-            if (AppServices.GameClient is SocketGameClientService clientService)
-            {
-                _viewModel.ConnectionStatus = "Đang chờ đối thủ xác nhận...";
+            _viewModel.ConnectionStatus = "Đang chờ đối thủ xác nhận...";
 
-                try
-                {
-                    await clientService.SendRematchRequestAsync();
-                }
-                catch (Exception ex)
-                {
-                    _viewModel.ServerError = $"Không thể gửi yêu cầu: {ex.Message}";
-                }
+            try
+            {
+                await clientService.SendRematchRequestAsync();
+            }
+            catch (Exception ex)
+            {
+                _viewModel.ServerError = $"Không thể gửi yêu cầu: {ex.Message}";
             }
         }
-    } 
+    }
 }

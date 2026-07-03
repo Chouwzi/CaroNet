@@ -19,6 +19,7 @@ public sealed class SocketGameClientService : IGameClientService, IAsyncDisposab
 
     private readonly IClientConnection _connection;
     private readonly object _stateLock = new();
+    private readonly SemaphoreSlim _roomRequestLock = new(1, 1);
     private TaskCompletionSource<GameViewState>? _roomJoinedCompletion;
     private string _connectionStatus = "Chưa kết nối server";
     private string _currentTurnSymbol = "X";
@@ -28,6 +29,30 @@ public sealed class SocketGameClientService : IGameClientService, IAsyncDisposab
     private string _roomId = string.Empty;
     private string _serverError = string.Empty;
     private string[,] _board = InitEmptyBoard();
+
+    // Định nghĩa sự kiện nhận Chat từ Socket mạng thật gửi về
+    public event EventHandler<CaroNet.Shared.Protocol.Payloads.ChatReceivedPayload>? ChatReceived;
+
+    // Hàm gửi tin nhắn qua Socket lên Server mạng thật
+    public async Task SendChatAsync(string message)
+    {
+        var payload = new CaroNet.Shared.Protocol.Payloads.ChatPayload
+        {
+            Message = message
+        };
+
+        var envelope = new MessageEnvelope
+        {
+            Type = MessageType.Chat,
+            RoomId = EmptyToNull(_roomId),
+            PlayerId = EmptyToNull(_playerId),
+            // Đồng bộ cách đóng gói dạng JsonElement giống như hàm MakeMoveAsync
+            Payload = JsonSerializer.SerializeToElement(payload)
+        };
+
+        // Truyền kèm CancellationToken do hàm SendAsync của connection yêu cầu
+        await _connection.SendAsync(envelope, CancellationToken.None);
+    }
 
     public SocketGameClientService(IClientConnection connection)
     {
@@ -82,41 +107,69 @@ public sealed class SocketGameClientService : IGameClientService, IAsyncDisposab
 
     public async Task<GameViewState> CreateRoomAsync(CancellationToken cancellationToken)
     {
-        TaskCompletionSource<GameViewState> completion = PrepareRoomJoinWaiter();
+        // Thử chiếm chốt chặn ngay lập tức (0ms). Nếu thất bại = đang có request chạy ngầm.
+        if (!await _roomRequestLock.WaitAsync(0, cancellationToken).ConfigureAwait(false))
+        {
+            throw new InvalidOperationException("Hệ thống đang xử lý yêu cầu vào phòng trước đó. Vui lòng đợi.");
+        }
 
-        await _connection.SendAsync(
-            new MessageEnvelope
-            {
-                Type = MessageType.CreateRoom,
-                PlayerId = EmptyToNull(_playerId),
-                Payload = JsonSerializer.SerializeToElement(new { })
-            },
-            cancellationToken);
+        try
+        {
+            TaskCompletionSource<GameViewState> completion = PrepareRoomJoinWaiter();
 
-        return await WaitForRoomJoinedAsync(completion, cancellationToken);
+            await _connection.SendAsync(
+                new MessageEnvelope
+                {
+                    Type = MessageType.CreateRoom,
+                    PlayerId = EmptyToNull(_playerId),
+                    Payload = JsonSerializer.SerializeToElement(new { })
+                },
+                cancellationToken);
+
+            return await WaitForRoomJoinedAsync(completion, cancellationToken);
+        }
+        finally
+        {
+            // Luôn luôn mở khóa chốt chặn khi kết thúc (kể cả thành công, thất bại hay timeout)
+            _roomRequestLock.Release();
+        }
     }
 
     public async Task<GameViewState> JoinRoomAsync(
         string roomId,
         CancellationToken cancellationToken)
     {
-        TaskCompletionSource<GameViewState> completion = PrepareRoomJoinWaiter();
-        string trimmedRoomId = roomId.Trim();
+        // Thử chiếm chốt chặn ngay lập tức
+        if (!await _roomRequestLock.WaitAsync(0, cancellationToken).ConfigureAwait(false))
+        {
+            throw new InvalidOperationException("Hệ thống đang xử lý yêu cầu vào phòng trước đó. Vui lòng đợi.");
+        }
 
-        await _connection.SendAsync(
-            new MessageEnvelope
-            {
-                Type = MessageType.JoinRoom,
-                RoomId = trimmedRoomId,
-                PlayerId = EmptyToNull(_playerId),
-                Payload = JsonSerializer.SerializeToElement(new
+        try
+        {
+            TaskCompletionSource<GameViewState> completion = PrepareRoomJoinWaiter();
+            string trimmedRoomId = roomId.Trim();
+
+            await _connection.SendAsync(
+                new MessageEnvelope
                 {
-                    roomId = trimmedRoomId
-                })
-            },
-            cancellationToken);
+                    Type = MessageType.JoinRoom,
+                    RoomId = trimmedRoomId,
+                    PlayerId = EmptyToNull(_playerId),
+                    Payload = JsonSerializer.SerializeToElement(new
+                    {
+                        roomId = trimmedRoomId
+                    })
+                },
+                cancellationToken);
 
-        return await WaitForRoomJoinedAsync(completion, cancellationToken);
+            return await WaitForRoomJoinedAsync(completion, cancellationToken);
+        }
+        finally
+        {
+            // Luôn luôn mở khóa chốt chặn khi kết thúc
+            _roomRequestLock.Release();
+        }
     }
 
     public async Task MakeMoveAsync(
@@ -196,8 +249,11 @@ public sealed class SocketGameClientService : IGameClientService, IAsyncDisposab
                 case MessageType.GameEnded:
                     ApplyGameEnded(args.Message);
                     break;
-                case MessageType.RematchAcepted:
+                case MessageType.RematchAccepted:
                     ApplyRematchAccepted(args.Message);
+                    break;
+                case MessageType.ChatReceived:
+                    ApplyChatReceived(args.Message);
                     break;
             }
         }
@@ -294,20 +350,27 @@ public sealed class SocketGameClientService : IGameClientService, IAsyncDisposab
                 _board = board!;
             }
 
-            _serverError = FirstNonEmpty(
-                GetString(message.Payload, "message"),
-                "Ván đấu đã kết thúc.");
+            string reason = GetString(message.Payload, "reason");
 
+            _serverError = reason == "opponent_disconnected"
+                ? "Đối thủ đã ngắt kết nối. Bạn thắng!"
+                : FirstNonEmpty(
+                    GetString(message.Payload, "message"),
+                    "Ván đấu đã kết thúc.");
+
+            _connectionStatus = "Trò chơi kết thúc";
             _winningCells.Clear();
-            if (message.Payload.HasValue && TryGetProperty(message.Payload, "winningCells", out var winningProp) && winningProp.ValueKind == JsonValueKind.Array)
+            if (message.Payload.HasValue &&
+                TryGetProperty(message.Payload, "winningCells", out var winningProp) &&
+                winningProp.ValueKind == JsonValueKind.Array)
             {
                 foreach (var cellElement in winningProp.EnumerateArray())
                 {
-                    int row = cellElement.TryGetProperty("Row", out var r) ? r.GetInt32() : (cellElement.TryGetProperty("row", out var r2) ? r2.GetInt32() : -1);
-                    int col = cellElement.TryGetProperty("Col", out var c) ? c.GetInt32() : (cellElement.TryGetProperty("col", out var c2) ? c2.GetInt32() : -1);
-                    if (row != -1 && col != -1)
+                    int row = ReadInt(cellElement, "row", "Row");
+                    int column = ReadInt(cellElement, "column", "Column", "col", "Col");
+                    if (row >= 0 && column >= 0)
                     {
-                        _winningCells.Add((row, col));
+                        _winningCells.Add((row, column));
                     }
                 }
             }
@@ -501,6 +564,9 @@ public sealed class SocketGameClientService : IGameClientService, IAsyncDisposab
 
     public async ValueTask DisposeAsync()
     {
+        // === THÊM DÒNG NÀY VÀO ĐÂY ===
+        _roomRequestLock.Dispose();
+
         await _connection.DisposeAsync();
     }
 
@@ -524,6 +590,7 @@ public sealed class SocketGameClientService : IGameClientService, IAsyncDisposab
 
         PublishState();
     }
+
     public async Task SendRematchRequestAsync(CancellationToken cancellationToken = default)
     {
         await _connection.SendAsync(
@@ -535,5 +602,40 @@ public sealed class SocketGameClientService : IGameClientService, IAsyncDisposab
                 Payload = JsonSerializer.SerializeToElement(new { })
             },
             cancellationToken);
+    }
+
+    private void ApplyChatReceived(MessageEnvelope message)
+    {
+        if (message.Payload.HasValue)
+        {
+            try
+            {
+                var chatReceivedPayload = message.Payload.Value.Deserialize<CaroNet.Shared.Protocol.Payloads.ChatReceivedPayload>();
+                if (chatReceivedPayload != null)
+                {
+                    // Kích hoạt Event để GameViewModel bên ngoài nghe thấy và render lên giao diện
+                    ChatReceived?.Invoke(this, chatReceivedPayload);
+                }
+            }
+            catch (Exception ex)
+            {
+                UpdateError($"Không thể giải mã tin nhắn chat: {ex.Message}");
+            }
+        }
+    }
+
+    private static int ReadInt(JsonElement payload, params string[] propertyNames)
+    {
+        foreach (string propertyName in propertyNames)
+        {
+            if (payload.TryGetProperty(propertyName, out JsonElement property) &&
+                property.ValueKind == JsonValueKind.Number &&
+                property.TryGetInt32(out int value))
+            {
+                return value;
+            }
+        }
+
+        return -1;
     }
 }

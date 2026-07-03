@@ -23,7 +23,7 @@ public enum MessageType
     GameStateUpdated = 56,
     GameEnded = 57,
     ChatReceived = 58,
-    RematchAcepted = 59, 
+    RematchAccepted = 59,
 
     Error = 100
 }

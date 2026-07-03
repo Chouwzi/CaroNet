@@ -16,7 +16,9 @@
     <Nullable>enable</Nullable>
   </PropertyGroup>
   <ItemGroup>
+    <None Remove="Views\BestRecordPage.xaml" />
     <None Remove="Views\GamePage.xaml" />
+    <None Remove="Views\HistoryPage.xaml" />
     <None Remove="Views\MainMenuPage.xaml" />
   </ItemGroup>
 
@@ -50,6 +52,16 @@
   <ItemGroup>
     <ProjectReference Include="..\CaroNet.Shared\CaroNet.Shared.csproj" />
     <ProjectReference Include="..\CaroNet.Storage\CaroNet.Storage.csproj" />
+  </ItemGroup>
+  <ItemGroup>
+    <Page Update="Views\BestRecordPage.xaml">
+      <Generator>MSBuild:Compile</Generator>
+    </Page>
+  </ItemGroup>
+  <ItemGroup>
+    <Page Update="Views\HistoryPage.xaml">
+      <Generator>MSBuild:Compile</Generator>
+    </Page>
   </ItemGroup>
   <ItemGroup>
     <Page Update="Views\GamePage.xaml">

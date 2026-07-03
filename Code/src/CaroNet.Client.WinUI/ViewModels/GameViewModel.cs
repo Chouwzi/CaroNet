@@ -17,6 +17,7 @@ public sealed class GameViewModel : INotifyPropertyChanged
     private readonly IGameClientService _gameClient;
     private readonly SynchronizationContext? _syncContext;
     private Action<Action>? _dispatchToUI;
+
     private string _connectionStatus = "Chưa kết nối server";
     private string _currentTurnSymbol = "X";
     private string _playerName = "Player";
@@ -24,12 +25,30 @@ public sealed class GameViewModel : INotifyPropertyChanged
     private string _roomId = string.Empty;
     private string _serverError = string.Empty;
     private bool _isGameEnded;
+    private string _chatInputText = string.Empty;
+
+    public ObservableCollection<ChatMessageViewModel> ChatMessages { get; } = [];
+
+    public string ChatInputText
+    {
+        get => _chatInputText;
+        set
+        {
+            SetProperty(ref _chatInputText, value);
+            PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(IsSendButtonEnabled)));
+        }
+    }
+
+    public bool IsChatInputEnabled => !string.IsNullOrEmpty(RoomId);
+    public bool IsSendButtonEnabled => IsChatInputEnabled && !string.IsNullOrWhiteSpace(ChatInputText) && ChatInputText.Length <= 200;
 
     public GameViewModel(IGameClientService gameClient)
     {
         _gameClient = gameClient;
         _syncContext = SynchronizationContext.Current;
+
         _gameClient.GameStateUpdated += GameClient_GameStateUpdated;
+        _gameClient.ChatReceived += GameClient_ChatReceived;
 
         for (var row = 0; row < BoardSize; row++)
         {
@@ -42,8 +61,40 @@ public sealed class GameViewModel : INotifyPropertyChanged
         ApplyState(_gameClient.CurrentState);
     }
 
-    public event PropertyChangedEventHandler? PropertyChanged;
+    public async Task SendChatAsync()
+    {
+        string cleanMessage = ChatInputText?.Trim() ?? string.Empty;
+        if (string.IsNullOrEmpty(cleanMessage) || cleanMessage.Length > 200 || string.IsNullOrEmpty(RoomId))
+        {
+            return;
+        }
 
+        try
+        {
+            await _gameClient.SendChatAsync(cleanMessage);
+            ChatInputText = string.Empty;
+        }
+        catch (Exception)
+        {
+            // Kháng lỗi đường truyền mạng
+        }
+    }
+
+    public sealed class ChatMessageViewModel
+    {
+        public string SenderName { get; }
+        public string Message { get; }
+        public DateTime Timestamp { get; }
+
+        public ChatMessageViewModel(string senderName, string message, DateTime timestamp)
+        {
+            SenderName = senderName;
+            Message = message;
+            Timestamp = timestamp;
+        }
+    }
+
+    public event PropertyChangedEventHandler? PropertyChanged;
     public ObservableCollection<BoardCellViewModel> BoardCells { get; } = [];
 
     public void SetDispatcher(Action<Action> dispatcher)
@@ -93,26 +144,66 @@ public sealed class GameViewModel : INotifyPropertyChanged
         private set => SetProperty(ref _isGameEnded, value);
     }
 
+    public bool IsMyTurn =>
+        !string.IsNullOrWhiteSpace(RoomId) &&
+        !string.IsNullOrWhiteSpace(PlayerSymbol) &&
+        PlayerSymbol != "?" &&
+        CurrentTurnSymbol == PlayerSymbol;
+
+    public string TurnMessage
+    {
+        get
+        {
+            if (string.IsNullOrWhiteSpace(RoomId) ||
+                string.IsNullOrWhiteSpace(PlayerSymbol) ||
+                PlayerSymbol == "?")
+            {
+                return "Đang chờ đối thủ...";
+            }
+
+            return IsMyTurn
+                ? "🎯 Lượt của bạn!"
+                : "⏳ Đợi đối thủ...";
+        }
+    }
+
     public async Task MakeMoveAsync(int row, int column)
     {
-        if (IsGameEnded) return;
-        await _gameClient.MakeMoveAsync(new BoardPosition(row, column), CancellationToken.None);
+        if (IsGameEnded)
+        {
+            return;
+        }
+
+        try
+        {
+            await _gameClient.MakeMoveAsync(new BoardPosition(row, column), CancellationToken.None);
+        }
+        catch (Exception)
+        {
+            // Bảo vệ ứng dụng nếu mất kết nối khi bấm ô cờ
+        }
+    }
+
+    // Hàm phụ trợ dùng chung để ép bất kỳ tiến trình nào về luồng UI một cách an toàn
+    private void SafeExecuteOnUI(Action action)
+    {
+        if (_dispatchToUI is not null)
+        {
+            _dispatchToUI(action);
+        }
+        else if (_syncContext is not null)
+        {
+            _syncContext.Post(_ => action(), null);
+        }
+        else
+        {
+            action();
+        }
     }
 
     private void GameClient_GameStateUpdated(object? sender, GameViewState state)
     {
-        if (_dispatchToUI is not null)
-        {
-            _dispatchToUI(() => ApplyState(state));
-        }
-        else if (_syncContext is not null)
-        {
-            _syncContext.Post(_ => ApplyState(state), null);
-        }
-        else
-        {
-            ApplyState(state);
-        }
+        SafeExecuteOnUI(() => ApplyState(state));
     }
 
     private void ApplyState(GameViewState state)
@@ -155,7 +246,11 @@ public sealed class GameViewModel : INotifyPropertyChanged
 
         foreach (var cellState in state.Cells)
         {
-            BoardCells[cellState.Row * BoardSize + cellState.Column].Mark = cellState.Mark;
+            int index = cellState.Row * BoardSize + cellState.Column;
+            if (index >= 0 && index < BoardCells.Count)
+            {
+                BoardCells[index].Mark = cellState.Mark;
+            }
         }
 
         if (IsGameEnded || _connectionStatus == "Đang chờ đối thủ xác nhận...")
@@ -181,6 +276,11 @@ public sealed class GameViewModel : INotifyPropertyChanged
                 }
             }
         }
+
+        PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(IsChatInputEnabled)));
+        PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(IsSendButtonEnabled)));
+        PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(IsMyTurn)));
+        PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(TurnMessage)));
     }
 
     private void SetProperty<T>(ref T field, T value, [CallerMemberName] string? propertyName = null)
@@ -188,6 +288,17 @@ public sealed class GameViewModel : INotifyPropertyChanged
         if (EqualityComparer<T>.Default.Equals(field, value)) return;
         field = value;
         PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(propertyName));
+    }
+
+    private void GameClient_ChatReceived(object? sender, CaroNet.Shared.Protocol.Payloads.ChatReceivedPayload payload)
+    {
+        // Khóa chặt việc nạp tin nhắn chat luôn luôn phải chạy trên luồng giao diện chính
+        SafeExecuteOnUI(() => AddChatMessageToUI(payload));
+    }
+
+    private void AddChatMessageToUI(CaroNet.Shared.Protocol.Payloads.ChatReceivedPayload payload)
+    {
+        ChatMessages.Add(new ChatMessageViewModel(payload.SenderName, payload.Message, payload.Timestamp));
     }
 }
 
@@ -204,7 +315,6 @@ public sealed class BoardCellViewModel : INotifyPropertyChanged
     }
 
     public event PropertyChangedEventHandler? PropertyChanged;
-
     public int Row { get; }
     public int Column { get; }
 

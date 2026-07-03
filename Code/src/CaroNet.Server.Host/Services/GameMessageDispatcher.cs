@@ -11,6 +11,7 @@ using CaroNet.Shared.Protocol;
 using CaroNet.Shared.Protocol.Payloads;
 using CaroNet.Storage.Matches;
 
+
 namespace CaroNet.Server.Host.Services;
 
 // Xử lý message từ client: Hello, CreateRoom, JoinRoom, MakeMove.
@@ -21,6 +22,7 @@ public sealed class GameMessageDispatcher : IMessageDispatcher
     private readonly IMatchHistoryStore? _matchHistoryStore;
 
     private readonly System.Collections.Concurrent.ConcurrentDictionary<Guid, string> _playerNames = new();
+    private readonly System.Collections.Concurrent.ConcurrentDictionary<Guid, DateTime> _lastRequestTimes = new();
 
     public GameMessageDispatcher(
         RoomManager roomManager,
@@ -39,6 +41,15 @@ public sealed class GameMessageDispatcher : IMessageDispatcher
     {
         Console.WriteLine(
             $"[DISPATCH] Client={session.Id} Type={message.Type}");
+
+        // Rate limiting per-session: giới hạn tối đa 10 requests/giây (khoảng cách tối thiểu 100ms) (Issue #53)
+        var now = DateTime.UtcNow;
+        if (_lastRequestTimes.TryGetValue(session.Id, out var lastTime) && (now - lastTime).TotalMilliseconds < 100)
+        {
+            await SendErrorAsync(session, "Rate limit exceeded.", cancellationToken);
+            return;
+        }
+        _lastRequestTimes[session.Id] = now;
 
         switch (message.Type)
         {
@@ -61,6 +72,10 @@ public sealed class GameMessageDispatcher : IMessageDispatcher
                 await HandleRematchAsync(session, message, cancellationToken);
                 break;
 
+            case MessageType.Chat:
+                await HandleChatAsync(session, message, cancellationToken);
+                break;
+
             default:
                 Console.WriteLine(
                     $"[DISPATCH] Unhandled message type: {message.Type}");
@@ -72,27 +87,42 @@ public sealed class GameMessageDispatcher : IMessageDispatcher
     public async Task HandleDisconnectAsync(Guid sessionId)
     {
         _playerNames.TryRemove(sessionId, out _);
+        _lastRequestTimes.TryRemove(sessionId, out _); // Dọn dẹp bộ giới hạn tốc độ (Issue #53)
 
         GameRoom? room = _roomManager.HandleDisconnect(sessionId);
         if (room is null) return;
+
         room.StopRematchTimeout();
-        // Báo đối thủ biết
+
+        // Báo cho người còn lại biết đối thủ đã thoát.
         foreach (var player in room.GetPlayers())
         {
             try
             {
-                await player.SendAsync(new MessageEnvelope
-                {
-                    Type = MessageType.Error,
-                    Payload = JsonSerializer.SerializeToElement(new
-                    {
-                        message = "Đối thủ đã ngắt kết nối."
-                    })
-                }, CancellationToken.None);
-            }
-            catch
-            {
+                Console.WriteLine(
+                    $"[DISCONNECT] Sending GameEnded to {player.Id}");
 
+                await player.SendAsync(
+                    new MessageEnvelope
+                    {
+                        Type = MessageType.GameEnded,
+                        RoomId = room.RoomId,
+                        Payload = JsonSerializer.SerializeToElement(new GameEndedPayload
+                        {
+                            WinnerPlayerId = player.Id.ToString(),
+                            Reason = "opponent_disconnected",
+                            Board = room.BuildBoardPayload()
+                        })
+                    },
+                    CancellationToken.None);
+
+                Console.WriteLine(
+                    $"[DISCONNECT] GameEnded sent to {player.Id}");
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine(
+                    $"[DISCONNECT] Failed to notify player {player.Id}: {ex.Message}");
             }
         }
     }
@@ -115,9 +145,7 @@ public sealed class GameMessageDispatcher : IMessageDispatcher
             catch { /* use default name */ }
         }
 
-        // Giới hạn tên tránh spam
-        if (playerName.Length > 30)
-            playerName = playerName[..30];
+        playerName = CaroNet.Server.Host.Validation.PlayerNameSanitizer.Sanitize(playerName);
 
         _playerNames[session.Id] = playerName;
 
@@ -286,6 +314,65 @@ public sealed class GameMessageDispatcher : IMessageDispatcher
         }
     }
 
+    private async Task HandleChatAsync(
+    ClientSession session,
+    MessageEnvelope message,
+    CancellationToken cancellationToken)
+    {
+        // 1. Kiểm tra xem người chơi đã ở trong Room chưa (Issue: không cho gửi khi chưa vào room)
+        GameRoom? room = _roomManager.GetRoomBySession(session.Id);
+        if (room is null) return;
+
+        // 2. Kiểm tra dữ liệu gói tin gửi lên
+        if (!message.Payload.HasValue) return;
+
+        try
+        {
+            var chatPayload = message.Payload.Value.Deserialize<ChatPayload>();
+            string? processedMessage = chatPayload?.Message?.Trim();
+
+            // Input validation: Reject nếu rỗng hoặc quá 200 ký tự
+            if (string.IsNullOrEmpty(processedMessage) || processedMessage.Length > 200)
+                return;
+
+            // 3. Lấy tên người gửi đã đăng ký trong hệ thống Server
+            string senderName = GetPlayerName(session.Id);
+
+            // 4. Tạo Payload phát sóng chuẩn ChatReceivedPayload
+            var broadcastPayload = new ChatReceivedPayload
+            {
+                SenderName = senderName,
+                Message = processedMessage,
+                Timestamp = DateTime.Now
+            };
+
+            // 5. Đóng gói vào MessageEnvelope phát sóng cho cả room
+            var envelope = new MessageEnvelope
+            {
+                Type = MessageType.ChatReceived,
+                RoomId = room.RoomId,
+                Payload = JsonSerializer.SerializeToElement(broadcastPayload)
+            };
+
+            // 6. Tiến hành Broadcast tới tất cả các Player trong Room (bắt chước logic MakeMove)
+            foreach (var player in room.GetPlayers())
+            {
+                try
+                {
+                    await player.SendAsync(envelope, cancellationToken);
+                }
+                catch (Exception ex)
+                {
+                    Console.WriteLine($"[CHAT BROADCAST ERROR] {player.Id}: {ex.Message}");
+                }
+            }
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"[CHAT ERROR] {session.Id}: {ex.Message}");
+        }
+    }
+
     private async Task BroadcastGameStartedAsync(
         GameRoom room, CancellationToken cancellationToken)
     {
@@ -355,27 +442,26 @@ public sealed class GameMessageDispatcher : IMessageDispatcher
         };
 
         // SỬA TẠI ĐÂY: Tính toán và chuyển đổi danh sách tọa độ sang JSON Payload an toàn
-        object? winningCellsPayload = null;
+        IReadOnlyList<BoardPosition>? winningCells = null;
 
         if (status == GameStatus.XWon || status == GameStatus.OWon)
         {
-            // Lấy danh sách (int Row, int Col) từ Engine
             var rawCells = CaroRuleEngine.GetWinningCells(room.GameState, lastRow, lastCol);
-
-            // Chuyển đổi trực tiếp thành cấu trúc thuộc tính viết thường (row, col) để Client đọc được luôn
-            winningCellsPayload = rawCells.Select(c => new { row = c.Row, col = c.Col }).ToList();
+            winningCells = rawCells
+                .Select(cell => new BoardPosition(cell.Row, cell.Col))
+                .ToList();
         }
 
         var envelope = new MessageEnvelope
         {
             Type = MessageType.GameEnded,
             RoomId = room.RoomId,
-            Payload = JsonSerializer.SerializeToElement(new
+            Payload = JsonSerializer.SerializeToElement(new GameEndedPayload
             {
-                status = status.ToString(),
-                winnerId,
-                board = room.BuildBoardPayload(),
-                winningCells = winningCellsPayload // Gửi danh sách đã format chuẩn xuống Client
+                WinnerPlayerId = winnerId,
+                Reason = null,
+                Board = room.BuildBoardPayload(),
+                WinningCells = winningCells
             })
         };
 
@@ -497,7 +583,7 @@ public sealed class GameMessageDispatcher : IMessageDispatcher
                     var symbol = room.GetPlayerSymbol(player.Id);
                     await player.SendAsync(new MessageEnvelope
                     {
-                        Type = MessageType.RematchAcepted,
+                        Type = MessageType.RematchAccepted,
                         RoomId = room.RoomId,
                         PlayerId = player.Id.ToString(),
                         Payload = JsonSerializer.SerializeToElement(new
