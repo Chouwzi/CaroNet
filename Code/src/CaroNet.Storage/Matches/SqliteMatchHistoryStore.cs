@@ -46,7 +46,9 @@ public sealed class SqliteMatchHistoryStore : IMatchHistoryStore
         await using var matchCommand = connection.CreateCommand();
         matchCommand.CommandText =
             """
-            SELECT RoomId, PlayerXName, PlayerOName, WinnerName, StartedAtUtc, EndedAtUtc
+            SELECT RoomId, PlayerXName, PlayerOName,
+                   PlayerXUserId, PlayerOUserId, WinnerUserId,
+                   WinnerName, StartedAtUtc, EndedAtUtc
             FROM Matches
             WHERE MatchId = $matchId;
             """;
@@ -62,9 +64,12 @@ public sealed class SqliteMatchHistoryStore : IMatchHistoryStore
         string roomId = reader.GetString(0);
         string playerX = reader.GetString(1);
         string playerO = reader.GetString(2);
-        string? winner = reader.IsDBNull(3) ? null : reader.GetString(3);
-        DateTime startedAtUtc = ParseUtc(reader.GetString(4));
-        DateTime? endedAtUtc = reader.IsDBNull(5) ? null : ParseUtc(reader.GetString(5));
+        Guid? playerXUserId = ReadNullableGuid(reader, 3);
+        Guid? playerOUserId = ReadNullableGuid(reader, 4);
+        Guid? winnerUserId = ReadNullableGuid(reader, 5);
+        string? winner = reader.IsDBNull(6) ? null : reader.GetString(6);
+        DateTime startedAtUtc = ParseUtc(reader.GetString(7));
+        DateTime? endedAtUtc = reader.IsDBNull(8) ? null : ParseUtc(reader.GetString(8));
 
         IReadOnlyList<MatchMoveRecord> moves =
             await ReadMovesAsync(connection, matchId, cancellationToken);
@@ -77,7 +82,12 @@ public sealed class SqliteMatchHistoryStore : IMatchHistoryStore
             winner,
             startedAtUtc,
             endedAtUtc,
-            moves);
+            moves)
+        {
+            PlayerXUserId = playerXUserId,
+            PlayerOUserId = playerOUserId,
+            WinnerUserId = winnerUserId
+        };
     }
 
     public async Task<IReadOnlyList<MatchRecord>> GetAllMatchesAsync(
@@ -123,6 +133,32 @@ public sealed class SqliteMatchHistoryStore : IMatchHistoryStore
         return await ReadMatchesByIdQueryAsync(command, cancellationToken);
     }
 
+    public async Task<IReadOnlyList<MatchRecord>> GetMatchesByUserIdAsync(
+        Guid userId,
+        CancellationToken cancellationToken = default)
+    {
+        if (userId == Guid.Empty)
+        {
+            return [];
+        }
+
+        await using var connection = new SqliteConnection(_connectionString);
+        await connection.OpenAsync(cancellationToken);
+
+        await using var command = connection.CreateCommand();
+        command.CommandText =
+            """
+            SELECT MatchId
+            FROM Matches
+            WHERE PlayerXUserId = $userId
+               OR PlayerOUserId = $userId
+            ORDER BY EndedAtUtc DESC, RoomId COLLATE NOCASE ASC;
+            """;
+        command.Parameters.AddWithValue("$userId", userId.ToString());
+
+        return await ReadMatchesByIdQueryAsync(command, cancellationToken);
+    }
+
     private async Task<IReadOnlyList<MatchRecord>> ReadMatchesByIdQueryAsync(
         SqliteCommand command,
         CancellationToken cancellationToken)
@@ -164,6 +200,9 @@ public sealed class SqliteMatchHistoryStore : IMatchHistoryStore
                 RoomId,
                 PlayerXName,
                 PlayerOName,
+                PlayerXUserId,
+                PlayerOUserId,
+                WinnerUserId,
                 WinnerName,
                 StartedAtUtc,
                 EndedAtUtc
@@ -174,6 +213,9 @@ public sealed class SqliteMatchHistoryStore : IMatchHistoryStore
                 $roomId,
                 $playerX,
                 $playerO,
+                $playerXUserId,
+                $playerOUserId,
+                $winnerUserId,
                 $winner,
                 $started,
                 $ended
@@ -184,6 +226,9 @@ public sealed class SqliteMatchHistoryStore : IMatchHistoryStore
         command.Parameters.AddWithValue("$roomId", match.RoomId.Trim());
         command.Parameters.AddWithValue("$playerX", match.PlayerXName.Trim());
         command.Parameters.AddWithValue("$playerO", match.PlayerOName.Trim());
+        command.Parameters.AddWithValue("$playerXUserId", (object?)match.PlayerXUserId?.ToString() ?? DBNull.Value);
+        command.Parameters.AddWithValue("$playerOUserId", (object?)match.PlayerOUserId?.ToString() ?? DBNull.Value);
+        command.Parameters.AddWithValue("$winnerUserId", (object?)match.WinnerUserId?.ToString() ?? DBNull.Value);
         command.Parameters.AddWithValue("$winner", (object?)match.WinnerName?.Trim() ?? DBNull.Value);
         command.Parameters.AddWithValue("$started", match.StartedAtUtc.ToString("O"));
         command.Parameters.AddWithValue("$ended", match.EndedAtUtc!.Value.ToString("O"));
@@ -285,6 +330,18 @@ public sealed class SqliteMatchHistoryStore : IMatchHistoryStore
     private static DateTime ParseUtc(string value)
     {
         return DateTime.Parse(value, null, DateTimeStyles.RoundtripKind);
+    }
+
+    private static Guid? ReadNullableGuid(SqliteDataReader reader, int ordinal)
+    {
+        if (reader.IsDBNull(ordinal))
+        {
+            return null;
+        }
+
+        return Guid.TryParse(reader.GetString(ordinal), out Guid value)
+            ? value
+            : null;
     }
 
     private static void ValidateCompletedMatch(MatchRecord match)

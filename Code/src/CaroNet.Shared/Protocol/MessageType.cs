@@ -16,6 +16,10 @@ public enum MessageType
     DrawOffer = 11,
     DrawResponse = 12,
     LeaveRoom = 13,
+    Register = 14,
+    Login = 15,
+    QuickMatch = 16,
+    MyHistoryRequest = 17,
 
     // Server -> Client
     HelloAccepted = 50,
@@ -28,6 +32,8 @@ public enum MessageType
     GameEnded = 57,
     ChatReceived = 58,
     RematchAccepted = 59,
+    AuthAccepted = 60,
+    MyHistoryReceived = 61,
 
     Error = 100
 }

@@ -17,7 +17,7 @@
 
         <Button
             Grid.Row="0"
-            Content="← Quay lại"
+            Content="Quay lại"
             HorizontalAlignment="Left"
             Click="BackButton_Click"/>
 

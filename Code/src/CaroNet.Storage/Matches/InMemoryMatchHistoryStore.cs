@@ -66,6 +66,27 @@ public sealed class InMemoryMatchHistoryStore : IMatchHistoryStore
         return Task.FromResult(matches);
     }
 
+    public Task<IReadOnlyList<MatchRecord>> GetMatchesByUserIdAsync(
+        Guid userId,
+        CancellationToken cancellationToken = default)
+    {
+        cancellationToken.ThrowIfCancellationRequested();
+
+        if (userId == Guid.Empty)
+        {
+            return Task.FromResult<IReadOnlyList<MatchRecord>>([]);
+        }
+
+        IReadOnlyList<MatchRecord> matches = _matches.Values
+            .Where(match => match.PlayerXUserId == userId || match.PlayerOUserId == userId)
+            .OrderByDescending(match => match.EndedAtUtc)
+            .ThenBy(match => match.RoomId, StringComparer.OrdinalIgnoreCase)
+            .Select(Clone)
+            .ToList();
+
+        return Task.FromResult(matches);
+    }
+
     private static void ValidateCompletedMatch(MatchRecord match)
     {
         if (match.MatchId == Guid.Empty)

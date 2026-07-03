@@ -10,7 +10,17 @@
                 <XamlControlsResources xmlns="using:Microsoft.UI.Xaml.Controls" />
                 <!-- Other merged dictionaries here -->
             </ResourceDictionary.MergedDictionaries>
-            <!-- Other app resources here -->
+
+            <!-- Fallback brush để tránh crash khi runtime thiếu Fluent resource key. -->
+            <SolidColorBrush x:Key="CardBackgroundFillColorDefaultBrush" Color="#262626"/>
+            <SolidColorBrush x:Key="CardStrokeColorDefaultBrush" Color="#3A3A3A"/>
+            <SolidColorBrush x:Key="LayerFillColorDefaultBrush" Color="#303030"/>
+            <SolidColorBrush x:Key="AccentFillColorDefaultBrush" Color="#4EA3FF"/>
+            <SolidColorBrush x:Key="TextFillColorPrimaryBrush" Color="#F2F4F8"/>
+            <SolidColorBrush x:Key="TextFillColorSecondaryBrush" Color="#C7CDD6"/>
+            <SolidColorBrush x:Key="TextFillColorDisabledBrush" Color="#858C96"/>
+            <SolidColorBrush x:Key="SystemFillColorCriticalBrush" Color="#FF6B6B"/>
+            <SolidColorBrush x:Key="ControlStrokeColorDefaultBrush" Color="#4A4A4A"/>
         </ResourceDictionary>
     </Application.Resources>
 </Application>

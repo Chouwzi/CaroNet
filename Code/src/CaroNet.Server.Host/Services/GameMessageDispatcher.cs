@@ -11,6 +11,7 @@ using CaroNet.Shared.Protocol;
 using CaroNet.Shared.Protocol.Payloads;
 using CaroNet.Storage.Matches;
 using CaroNet.Storage.Statistics;
+using CaroNet.Storage.Users;
 
 namespace CaroNet.Server.Host.Services;
 
@@ -21,8 +22,10 @@ public sealed class GameMessageDispatcher : IMessageDispatcher
     private readonly ClientSessionRegistry _registry;
     private readonly IMatchHistoryStore? _matchHistoryStore;
     private readonly IPlayerRecordStore? _playerRecordStore;
+    private readonly IUserAccountStore _userAccountStore;
 
     private readonly System.Collections.Concurrent.ConcurrentDictionary<Guid, string> _playerNames = new();
+    private readonly System.Collections.Concurrent.ConcurrentDictionary<Guid, AuthenticatedUser> _authenticatedUsers = new();
     private readonly System.Collections.Concurrent.ConcurrentDictionary<Guid, DateTime> _lastRequestTimes = new();
     private readonly System.Collections.Concurrent.ConcurrentDictionary<string, SemaphoreSlim> _playerRecordLocks =
         new(StringComparer.OrdinalIgnoreCase);
@@ -31,12 +34,14 @@ public sealed class GameMessageDispatcher : IMessageDispatcher
         RoomManager roomManager,
         ClientSessionRegistry registry,
         IMatchHistoryStore? matchHistoryStore = null,
-        IPlayerRecordStore? playerRecordStore = null)
+        IPlayerRecordStore? playerRecordStore = null,
+        IUserAccountStore? userAccountStore = null)
     {
         _roomManager = roomManager;
         _registry = registry;
         _matchHistoryStore = matchHistoryStore;
         _playerRecordStore = playerRecordStore;
+        _userAccountStore = userAccountStore ?? new InMemoryUserAccountStore();
     }
 
     public async Task DispatchAsync(
@@ -47,9 +52,10 @@ public sealed class GameMessageDispatcher : IMessageDispatcher
         Console.WriteLine(
             $"[DISPATCH] Client={session.Id} Type={message.Type}");
 
-        // Rate limiting per-session: bỏ qua Hello để không chặn flow connect rồi tạo phòng ngay.
+        // Bỏ qua handshake/auth để người chơi có thể vào trận ngay sau đăng nhập.
         var now = DateTime.UtcNow;
-        if (message.Type != MessageType.Hello &&
+        bool bypassRateLimit = message.Type is MessageType.Hello or MessageType.Register or MessageType.Login;
+        if (!bypassRateLimit &&
             _lastRequestTimes.TryGetValue(session.Id, out var lastTime) &&
             (now - lastTime).TotalMilliseconds < 100)
         {
@@ -57,7 +63,7 @@ public sealed class GameMessageDispatcher : IMessageDispatcher
             return;
         }
 
-        if (message.Type != MessageType.Hello)
+        if (!bypassRateLimit)
         {
             _lastRequestTimes[session.Id] = now;
         }
@@ -70,6 +76,22 @@ public sealed class GameMessageDispatcher : IMessageDispatcher
 
             case MessageType.CreateRoom:
                 await HandleCreateRoomAsync(session, message, cancellationToken);
+                break;
+
+            case MessageType.Register:
+                await HandleRegisterAsync(session, message, cancellationToken);
+                break;
+
+            case MessageType.Login:
+                await HandleLoginAsync(session, message, cancellationToken);
+                break;
+
+            case MessageType.QuickMatch:
+                await HandleQuickMatchAsync(session, cancellationToken);
+                break;
+
+            case MessageType.MyHistoryRequest:
+                await HandleMyHistoryRequestAsync(session, cancellationToken);
                 break;
 
             case MessageType.JoinRoom:
@@ -114,6 +136,7 @@ public sealed class GameMessageDispatcher : IMessageDispatcher
     public async Task HandleDisconnectAsync(Guid sessionId)
     {
         _playerNames.TryRemove(sessionId, out _);
+        _authenticatedUsers.TryRemove(sessionId, out _);
         _lastRequestTimes.TryRemove(sessionId, out _); // Dọn dẹp bộ giới hạn tốc độ (Issue #53)
 
         GameRoom? room = _roomManager.HandleDisconnect(sessionId);
@@ -223,12 +246,105 @@ public sealed class GameMessageDispatcher : IMessageDispatcher
         }, cancellationToken);
     }
 
+    private async Task HandleRegisterAsync(
+        ClientSession session,
+        MessageEnvelope message,
+        CancellationToken cancellationToken)
+    {
+        AuthRequestPayload? payload = DeserializeAuthPayload(message);
+        if (payload is null)
+        {
+            await SendErrorAsync(session, "Dữ liệu đăng ký không hợp lệ.", cancellationToken);
+            return;
+        }
+
+        try
+        {
+            UserAccount account = await _userAccountStore.RegisterAsync(
+                payload.Username,
+                payload.Password,
+                payload.DisplayName,
+                cancellationToken);
+
+            await AcceptAuthenticatedUserAsync(session, account, cancellationToken);
+        }
+        catch (Exception ex) when (ex is ArgumentException or InvalidOperationException)
+        {
+            await SendErrorAsync(session, ex.Message, cancellationToken);
+        }
+    }
+
+    private async Task HandleLoginAsync(
+        ClientSession session,
+        MessageEnvelope message,
+        CancellationToken cancellationToken)
+    {
+        AuthRequestPayload? payload = DeserializeAuthPayload(message);
+        if (payload is null)
+        {
+            await SendErrorAsync(session, "Dữ liệu đăng nhập không hợp lệ.", cancellationToken);
+            return;
+        }
+
+        try
+        {
+            UserAccount? account = await _userAccountStore.LoginAsync(
+                payload.Username,
+                payload.Password,
+                cancellationToken);
+
+            if (account is null)
+            {
+                await SendErrorAsync(session, "Tên đăng nhập hoặc mật khẩu không đúng.", cancellationToken);
+                return;
+            }
+
+            await AcceptAuthenticatedUserAsync(session, account, cancellationToken);
+        }
+        catch (ArgumentException ex)
+        {
+            await SendErrorAsync(session, ex.Message, cancellationToken);
+        }
+    }
+
+    private async Task AcceptAuthenticatedUserAsync(
+        ClientSession session,
+        UserAccount account,
+        CancellationToken cancellationToken)
+    {
+        var authenticatedUser = new AuthenticatedUser(
+            account.UserId,
+            account.Username,
+            account.DisplayName);
+
+        _authenticatedUsers[session.Id] = authenticatedUser;
+        _playerNames[session.Id] = account.DisplayName;
+
+        await session.SendAsync(new MessageEnvelope
+        {
+            Type = MessageType.AuthAccepted,
+            PlayerId = session.Id.ToString(),
+            Payload = JsonSerializer.SerializeToElement(new AuthAcceptedPayload
+            {
+                UserId = account.UserId.ToString(),
+                Username = account.Username,
+                DisplayName = account.DisplayName
+            })
+        }, cancellationToken);
+    }
+
     private async Task HandleCreateRoomAsync(
         ClientSession session,
         MessageEnvelope message,
         CancellationToken cancellationToken)
     {
-        string playerName = GetPlayerName(session.Id);
+        if (!TryGetAuthenticatedUser(session, out AuthenticatedUser user))
+        {
+            await SendErrorAsync(session, "Bạn cần đăng nhập trước khi chơi.", cancellationToken);
+            return;
+        }
+
+        string playerName = user.DisplayName;
 
         if (_roomManager.IsSessionInRoom(session.Id))
         {
@@ -263,6 +379,12 @@ public sealed class GameMessageDispatcher : IMessageDispatcher
         MessageEnvelope message,
         CancellationToken cancellationToken)
     {
+        if (!TryGetAuthenticatedUser(session, out AuthenticatedUser user))
+        {
+            await SendErrorAsync(session, "Bạn cần đăng nhập trước khi chơi.", cancellationToken);
+            return;
+        }
+
         string? roomId = message.RoomId;
 
         if (string.IsNullOrWhiteSpace(roomId) && message.Payload.HasValue)
@@ -281,7 +403,7 @@ public sealed class GameMessageDispatcher : IMessageDispatcher
             return;
         }
 
-        string playerName = GetPlayerName(session.Id);
+        string playerName = user.DisplayName;
 
         if (_roomManager.IsSessionInRoom(session.Id))
         {
@@ -318,11 +440,61 @@ public sealed class GameMessageDispatcher : IMessageDispatcher
         }
     }
 
+    private async Task HandleQuickMatchAsync(
+        ClientSession session,
+        CancellationToken cancellationToken)
+    {
+        if (!TryGetAuthenticatedUser(session, out AuthenticatedUser user))
+        {
+            await SendErrorAsync(session, "Bạn cần đăng nhập trước khi chơi.", cancellationToken);
+            return;
+        }
+
+        if (_roomManager.IsSessionInRoom(session.Id))
+        {
+            await SendErrorAsync(session, "Bạn đã ở trong phòng chơi.", cancellationToken);
+            return;
+        }
+
+        var (room, symbol, matched) = _roomManager.JoinQuickMatch(session, user.DisplayName);
+        if (room is null || symbol is null)
+        {
+            await SendErrorAsync(session, "Không thể ghép trận nhanh lúc này.", cancellationToken);
+            return;
+        }
+
+        await session.SendAsync(new MessageEnvelope
+        {
+            Type = MessageType.RoomJoined,
+            RoomId = room.RoomId,
+            PlayerId = session.Id.ToString(),
+            Payload = JsonSerializer.SerializeToElement(new
+            {
+                roomId = room.RoomId,
+                symbol = symbol.Value.ToString(),
+                playerName = user.DisplayName,
+                quickMatch = true
+            })
+        }, cancellationToken);
+
+        if (matched && room.IsFull)
+        {
+            await BroadcastGameStartedAsync(room, cancellationToken);
+            StartTurnTimeout(room);
+        }
+    }
+
     private async Task HandleMakeMoveAsync(
         ClientSession session,
         MessageEnvelope message,
         CancellationToken cancellationToken)
     {
+        if (!TryGetAuthenticatedUser(session, out _))
+        {
+            await SendErrorAsync(session, "Bạn cần đăng nhập trước khi chơi.", cancellationToken);
+            return;
+        }
+
         GameRoom? room = _roomManager.GetRoomBySession(session.Id);
         if (room is null)
         {
@@ -399,6 +571,12 @@ public sealed class GameMessageDispatcher : IMessageDispatcher
     MessageEnvelope message,
     CancellationToken cancellationToken)
     {
+        if (!TryGetAuthenticatedUser(session, out _))
+        {
+            await SendErrorAsync(session, "Bạn cần đăng nhập trước khi chat.", cancellationToken);
+            return;
+        }
+
         // 1. Kiểm tra xem người chơi đã ở trong Room chưa (Issue: không cho gửi khi chưa vào room)
         GameRoom? room = _roomManager.GetRoomBySession(session.Id);
         if (room is null) return;
@@ -458,6 +636,12 @@ public sealed class GameMessageDispatcher : IMessageDispatcher
         ClientSession session,
         CancellationToken cancellationToken)
     {
+        if (!TryGetAuthenticatedUser(session, out _))
+        {
+            await SendErrorAsync(session, "Bạn cần đăng nhập trước khi chơi.", cancellationToken);
+            return;
+        }
+
         GameRoom? room = _roomManager.GetRoomBySession(session.Id);
         if (room is null)
         {
@@ -480,6 +664,12 @@ public sealed class GameMessageDispatcher : IMessageDispatcher
         ClientSession session,
         CancellationToken cancellationToken)
     {
+        if (!TryGetAuthenticatedUser(session, out _))
+        {
+            await SendErrorAsync(session, "Bạn cần đăng nhập trước khi chơi.", cancellationToken);
+            return;
+        }
+
         GameRoom? room = _roomManager.GetRoomBySession(session.Id);
         if (room is null)
         {
@@ -511,6 +701,12 @@ public sealed class GameMessageDispatcher : IMessageDispatcher
         MessageEnvelope message,
         CancellationToken cancellationToken)
     {
+        if (!TryGetAuthenticatedUser(session, out _))
+        {
+            await SendErrorAsync(session, "Bạn cần đăng nhập trước khi chơi.", cancellationToken);
+            return;
+        }
+
         GameRoom? room = _roomManager.GetRoomBySession(session.Id);
         if (room is null)
         {
@@ -587,7 +783,20 @@ public sealed class GameMessageDispatcher : IMessageDispatcher
             }
         }
 
-        await HandleDisconnectAsync(session.Id);
+        GameRoom? updatedRoom = _roomManager.HandleDisconnect(session.Id);
+        if (updatedRoom is null)
+        {
+            return;
+        }
+
+        updatedRoom.StopRematchTimeout();
+        updatedRoom.StopTurnTimeout();
+
+        // Rời phòng không đồng nghĩa mất phiên đăng nhập trên socket hiện tại.
+        if (updatedRoom.GameState.Status != GameStatus.Playing)
+        {
+            await NotifyOpponentLeftAfterGameEndedAsync(updatedRoom);
+        }
     }
 
     private async Task BroadcastGameStartedAsync(
@@ -769,6 +978,42 @@ public sealed class GameMessageDispatcher : IMessageDispatcher
         };
     }
 
+    private async Task HandleMyHistoryRequestAsync(
+        ClientSession session,
+        CancellationToken cancellationToken)
+    {
+        if (!TryGetAuthenticatedUser(session, out AuthenticatedUser user))
+        {
+            await SendErrorAsync(session, "Bạn cần đăng nhập để xem lịch sử.", cancellationToken);
+            return;
+        }
+
+        IReadOnlyList<MatchRecord> matches = _matchHistoryStore is null
+            ? []
+            : await _matchHistoryStore.GetMatchesByUserIdAsync(user.UserId, cancellationToken);
+
+        var payload = new MyHistoryReceivedPayload
+        {
+            Matches = matches
+                .Select(match => new MyHistoryMatchPayload
+                {
+                    RoomId = match.RoomId,
+                    PlayerXName = match.PlayerXName,
+                    PlayerOName = match.PlayerOName,
+                    WinnerName = match.WinnerName,
+                    PlayedAtUtc = match.EndedAtUtc ?? match.StartedAtUtc,
+                    MoveCount = match.Moves.Count
+                })
+                .ToList()
+        };
+
+        await session.SendAsync(new MessageEnvelope
+        {
+            Type = MessageType.MyHistoryReceived,
+            Payload = JsonSerializer.SerializeToElement(payload)
+        }, cancellationToken);
+    }
+
     private async Task SendErrorAsync(
         ClientSession session, string errorMessage,
         CancellationToken cancellationToken)
@@ -785,9 +1030,38 @@ public sealed class GameMessageDispatcher : IMessageDispatcher
 
     private string GetPlayerName(Guid sessionId)
     {
+        if (_authenticatedUsers.TryGetValue(sessionId, out AuthenticatedUser? user))
+        {
+            return user.DisplayName;
+        }
+
         return _playerNames.TryGetValue(sessionId, out string? name)
             ? name
             : "Player";
+    }
+
+    private bool TryGetAuthenticatedUser(
+        ClientSession session,
+        out AuthenticatedUser user)
+    {
+        return _authenticatedUsers.TryGetValue(session.Id, out user!);
+    }
+
+    private static AuthRequestPayload? DeserializeAuthPayload(MessageEnvelope message)
+    {
+        if (!message.Payload.HasValue)
+        {
+            return null;
+        }
+
+        try
+        {
+            return message.Payload.Value.Deserialize<AuthRequestPayload>();
+        }
+        catch
+        {
+            return null;
+        }
     }
 
     private static string GetOpponentName(GameRoom room, Guid playerId)
@@ -807,6 +1081,16 @@ public sealed class GameMessageDispatcher : IMessageDispatcher
 
     private async Task SaveMatchHistoryAsync(GameRoom room, GameStatus status)
     {
+        AuthenticatedUser? playerXUser = room.PlayerX is not null &&
+            _authenticatedUsers.TryGetValue(room.PlayerX.Id, out AuthenticatedUser? authenticatedX)
+                ? authenticatedX
+                : null;
+
+        AuthenticatedUser? playerOUser = room.PlayerO is not null &&
+            _authenticatedUsers.TryGetValue(room.PlayerO.Id, out AuthenticatedUser? authenticatedO)
+                ? authenticatedO
+                : null;
+
         string playerXName = room.PlayerX is not null && _playerNames.TryGetValue(room.PlayerX.Id, out var nameX)
             ? nameX
             : room.PlayerXName ?? "Player X";
@@ -826,6 +1110,13 @@ public sealed class GameMessageDispatcher : IMessageDispatcher
                     _ => null
                 };
 
+                Guid? winnerUserId = status switch
+                {
+                    GameStatus.XWon => playerXUser?.UserId,
+                    GameStatus.OWon => playerOUser?.UserId,
+                    _ => null
+                };
+
                 var moves = room.GetMoveHistory();
                 var now = DateTime.UtcNow;
 
@@ -841,7 +1132,12 @@ public sealed class GameMessageDispatcher : IMessageDispatcher
                     winnerName,
                     room.StartedAtUtc,
                     now,
-                    matchMoves);
+                    matchMoves)
+                {
+                    PlayerXUserId = playerXUser?.UserId,
+                    PlayerOUserId = playerOUser?.UserId,
+                    WinnerUserId = winnerUserId
+                };
 
                 await _matchHistoryStore.SaveMatchAsync(record);
                 Console.WriteLine($"[HISTORY] Saved match {record.MatchId} in room {room.RoomId}");
@@ -911,6 +1207,12 @@ public sealed class GameMessageDispatcher : IMessageDispatcher
         MessageEnvelope message,
         CancellationToken cancellationToken)
     {
+        if (!TryGetAuthenticatedUser(session, out _))
+        {
+            await SendErrorAsync(session, "Bạn cần đăng nhập trước khi chơi.", cancellationToken);
+            return;
+        }
+
         GameRoom? room = _roomManager.GetRoomBySession(session.Id);
         if (room is null)
         {
@@ -972,4 +1274,9 @@ public sealed class GameMessageDispatcher : IMessageDispatcher
             }
         }
     }
+
+    private sealed record AuthenticatedUser(
+        Guid UserId,
+        string Username,
+        string DisplayName);
 }
