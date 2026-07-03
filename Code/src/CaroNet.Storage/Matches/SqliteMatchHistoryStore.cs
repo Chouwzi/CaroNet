@@ -13,6 +13,37 @@ public sealed class SqliteMatchHistoryStore : IMatchHistoryStore
         _connectionString = SqliteConnectionFactory.CreateConnectionString(databasePath);
     }
 
+    public async Task InitializeDatabaseAsync(CancellationToken cancellationToken = default)
+    {
+        await using var connection = new SqliteConnection(_connectionString);
+        await connection.OpenAsync(cancellationToken);
+
+        await using var command = connection.CreateCommand();
+        command.CommandText =
+            """
+            CREATE TABLE IF NOT EXISTS Matches (
+                MatchId TEXT PRIMARY KEY,
+                RoomId TEXT NOT NULL,
+                PlayerXName TEXT NOT NULL,
+                PlayerOName TEXT NOT NULL,
+                WinnerName TEXT,
+                StartedAtUtc TEXT NOT NULL,
+                EndedAtUtc TEXT NOT NULL
+            );
+
+            CREATE TABLE IF NOT EXISTS MatchMoves (
+                MatchId TEXT NOT NULL,
+                MoveNumber INTEGER NOT NULL,
+                PlayerName TEXT NOT NULL,
+                Row INTEGER NOT NULL,
+                Column INTEGER NOT NULL,
+                TimestampUtc TEXT NOT NULL,
+                FOREIGN KEY (MatchId) REFERENCES Matches(MatchId)
+            );
+            """;
+        await command.ExecuteNonQueryAsync(cancellationToken);
+    }
+
     public async Task SaveMatchAsync(
         MatchRecord match,
         CancellationToken cancellationToken = default)
@@ -22,7 +53,6 @@ public sealed class SqliteMatchHistoryStore : IMatchHistoryStore
         await using var connection = new SqliteConnection(_connectionString);
         await connection.OpenAsync(cancellationToken);
 
-        // Bật chế độ WAL ngay sau khi mở kết nối để hỗ trợ ghi đồng thời
         await using (var walCommand = connection.CreateCommand())
         {
             walCommand.CommandText = "PRAGMA journal_mode=WAL;";
