@@ -21,6 +21,14 @@ public sealed class SqliteMatchHistoryStore : IMatchHistoryStore
 
         await using var connection = new SqliteConnection(_connectionString);
         await connection.OpenAsync(cancellationToken);
+
+        // Bật chế độ WAL ngay sau khi mở kết nối để hỗ trợ ghi đồng thời
+        await using (var walCommand = connection.CreateCommand())
+        {
+            walCommand.CommandText = "PRAGMA journal_mode=WAL;";
+            await walCommand.ExecuteNonQueryAsync(cancellationToken);
+        }
+
         await using SqliteTransaction transaction =
             (SqliteTransaction)await connection.BeginTransactionAsync(cancellationToken);
 
