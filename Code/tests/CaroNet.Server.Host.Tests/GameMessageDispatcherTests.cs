@@ -69,18 +69,16 @@ namespace CaroNet.Server.Host.Tests
         {
             var envelope = new MessageEnvelope
             {
-                Type = MessageType.Hello,
-                Payload = JsonSerializer.SerializeToElement(new { playerName = "Chouwzi" })
+                Type = MessageType.CreateRoom,
+                Payload = JsonSerializer.SerializeToElement(new { })
             };
 
             // Gửi request thứ nhất (thành công bình thường)
             await _dispatcher.DispatchAsync(_session, envelope, CancellationToken.None);
 
-            // Đợi dữ liệu HelloAccepted truyền đi hoàn tất và đọc sạch nó khỏi socket client để giải phóng stream
+            // Đợi dữ liệu RoomJoined truyền đi hoàn tất và đọc sạch nó khỏi socket client để giải phóng stream
             await Task.Delay(50);
-            byte[] discardBuffer = new byte[1024];
-            int discarded = _clientSocket.Receive(discardBuffer);
-            Assert.True(discarded > 0);
+            Assert.Equal(MessageType.RoomJoined, ReceiveEnvelope().Type);
 
             // Gửi ngay lập tức request thứ hai (sẽ bị chặn lại do khoảng cách < 100ms)
             await _dispatcher.DispatchAsync(_session, envelope, CancellationToken.None);
@@ -89,24 +87,39 @@ namespace CaroNet.Server.Host.Tests
             await Task.Delay(50);
 
             // Đọc toàn bộ gói tin client nhận được từ server socket
-            byte[] buffer = new byte[1024];
-            int received = _clientSocket.Receive(buffer);
-            Assert.True(received > 4);
-
-            // Phân tách độ dài payload
-            int payloadLength = System.Buffers.Binary.BinaryPrimitives.ReadInt32BigEndian(buffer.AsSpan(0, 4));
-            byte[] payloadBytes = new byte[payloadLength];
-            Array.Copy(buffer, 4, payloadBytes, 0, payloadLength);
-
-            // Decode và kiểm tra xem có chứa thông điệp lỗi rate limit không
-            var response = JsonSerializer.Deserialize<MessageEnvelope>(payloadBytes);
-            Assert.NotNull(response);
+            var response = ReceiveEnvelope();
             Assert.Equal(MessageType.Error, response.Type);
             Assert.True(response.Payload.HasValue);
 
             using var doc = JsonDocument.Parse(response.Payload.Value.GetRawText());
             var message = doc.RootElement.GetProperty("message").GetString();
             Assert.Equal("Rate limit exceeded.", message);
+        }
+
+        [Fact]
+        public async Task DispatchAsync_ShouldAllowCreateRoomImmediatelyAfterHello()
+        {
+            var hello = new MessageEnvelope
+            {
+                Type = MessageType.Hello,
+                Payload = JsonSerializer.SerializeToElement(new { playerName = "Alice" })
+            };
+
+            var createRoom = new MessageEnvelope
+            {
+                Type = MessageType.CreateRoom,
+                Payload = JsonSerializer.SerializeToElement(new { })
+            };
+
+            await _dispatcher.DispatchAsync(_session, hello, CancellationToken.None);
+            await _dispatcher.DispatchAsync(_session, createRoom, CancellationToken.None);
+
+            MessageEnvelope firstResponse = ReceiveEnvelope();
+            MessageEnvelope secondResponse = ReceiveEnvelope();
+
+            Assert.Equal(MessageType.HelloAccepted, firstResponse.Type);
+            Assert.Equal(MessageType.RoomJoined, secondResponse.Type);
+            Assert.False(string.IsNullOrWhiteSpace(secondResponse.RoomId));
         }
 
         [Fact]
@@ -152,6 +165,39 @@ namespace CaroNet.Server.Host.Tests
             _clientSocket.Close();
             _serverSocket.Close();
             _listener.Close();
+        }
+
+        private MessageEnvelope ReceiveEnvelope()
+        {
+            var lengthBuffer = new byte[4];
+            ReceiveExact(lengthBuffer);
+
+            int payloadLength = System.Buffers.Binary.BinaryPrimitives.ReadInt32BigEndian(lengthBuffer);
+            var frame = new byte[4 + payloadLength];
+            lengthBuffer.CopyTo(frame, 0);
+            ReceiveExact(frame.AsSpan(4));
+
+            return ProtocolFrameCodec.Decode(frame);
+        }
+
+        private void ReceiveExact(byte[] buffer)
+        {
+            ReceiveExact(buffer.AsSpan());
+        }
+
+        private void ReceiveExact(Span<byte> buffer)
+        {
+            int offset = 0;
+            while (offset < buffer.Length)
+            {
+                int received = _clientSocket.Receive(buffer[offset..]);
+                if (received == 0)
+                {
+                    throw new InvalidOperationException("Socket closed while reading test frame.");
+                }
+
+                offset += received;
+            }
         }
 
         private sealed class InMemoryPlayerRecordStore : IPlayerRecordStore

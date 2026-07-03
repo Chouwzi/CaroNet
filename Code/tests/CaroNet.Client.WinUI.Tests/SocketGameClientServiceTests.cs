@@ -43,6 +43,31 @@ public sealed class SocketGameClientServiceTests
     }
 
     [Fact]
+    public async Task CreateRoomAsync_CompletesWithServerError_WhenRoomRequestIsRejected()
+    {
+        var connection = new FakeClientConnection();
+        var service = new SocketGameClientService(connection);
+
+        Task<GameViewState> createRoomTask = service.CreateRoomAsync(
+            new CancellationTokenSource(TimeSpan.FromSeconds(2)).Token);
+
+        connection.RaiseMessage(new MessageEnvelope
+        {
+            Type = MessageType.Error,
+            Payload = JsonSerializer.SerializeToElement(new
+            {
+                message = "Rate limit exceeded."
+            })
+        });
+
+        var exception = await Assert.ThrowsAsync<InvalidOperationException>(
+            () => createRoomTask);
+
+        Assert.Equal("Rate limit exceeded.", exception.Message);
+        Assert.Equal("Rate limit exceeded.", service.CurrentState.ServerError);
+    }
+
+    [Fact]
     public async Task GameStateUpdated_updates_board_from_server_state()
     {
         var connection = new FakeClientConnection();

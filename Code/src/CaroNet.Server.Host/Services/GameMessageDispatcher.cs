@@ -45,14 +45,20 @@ public sealed class GameMessageDispatcher : IMessageDispatcher
         Console.WriteLine(
             $"[DISPATCH] Client={session.Id} Type={message.Type}");
 
-        // Rate limiting per-session: giới hạn tối đa 10 requests/giây (khoảng cách tối thiểu 100ms) (Issue #53)
+        // Rate limiting per-session: bỏ qua Hello để không chặn flow connect rồi tạo phòng ngay.
         var now = DateTime.UtcNow;
-        if (_lastRequestTimes.TryGetValue(session.Id, out var lastTime) && (now - lastTime).TotalMilliseconds < 100)
+        if (message.Type != MessageType.Hello &&
+            _lastRequestTimes.TryGetValue(session.Id, out var lastTime) &&
+            (now - lastTime).TotalMilliseconds < 100)
         {
             await SendErrorAsync(session, "Rate limit exceeded.", cancellationToken);
             return;
         }
-        _lastRequestTimes[session.Id] = now;
+
+        if (message.Type != MessageType.Hello)
+        {
+            _lastRequestTimes[session.Id] = now;
+        }
 
         switch (message.Type)
         {
