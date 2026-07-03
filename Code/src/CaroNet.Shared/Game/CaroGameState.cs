@@ -74,4 +74,12 @@ public class CaroGameState
         CurrentPlayer = PlayerSymbol.X;
         Status = GameStatus.Playing;
     }
+
+    public void ResetForRematch(PlayerSymbol startingPlayer)
+    {
+        Array.Clear(_grid, 0, _grid.Length);
+        MoveCount = 0;
+        CurrentPlayer = startingPlayer;
+        Status = GameStatus.Playing;
+    }
 }

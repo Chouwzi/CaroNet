@@ -92,6 +92,31 @@ public class CaroGameTests
     }
 
     [Fact]
+    public void GetWinningCells_Horizontal_ShouldReturnWinningLine()
+    {
+        var game = CreateStandardGame();
+
+        int[,] moves = {
+            {0, 0}, {1, 0},
+            {0, 1}, {1, 1},
+            {0, 2}, {1, 2},
+            {0, 3}, {1, 3},
+            {0, 4}
+        };
+
+        for (int i = 0; i < moves.GetLength(0); i++)
+        {
+            game.MakeMove(new BoardPosition(moves[i, 0], moves[i, 1]), game.CurrentPlayer);
+        }
+
+        var winningCells = CaroRuleEngine.GetWinningCells(game, 0, 4);
+
+        Assert.Equal(5, winningCells.Count);
+        Assert.Contains((0, 0), winningCells);
+        Assert.Contains((0, 4), winningCells);
+    }
+
+    [Fact]
     public void CheckWin_Vertical_ShouldTrigger_OWon()
     {
         var game = CreateStandardGame();

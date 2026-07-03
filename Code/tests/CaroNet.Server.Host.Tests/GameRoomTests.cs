@@ -153,6 +153,40 @@ public sealed class GameRoomTests
         Assert.Equal(15, board.Length);
         Assert.Equal(15, board[0].Length);
     }
+
+    [Fact]
+    public void HandleRematchRequest_WhenBothPlayersAccepted_ResetsGame()
+    {
+        var room = new GameRoom();
+        var s1 = CreateDummySession();
+        var s2 = CreateDummySession();
+        room.TryAddPlayer(s1, "Alice");
+        room.TryAddPlayer(s2, "Bob");
+
+        int[,] moves = {
+            {0, 0}, {1, 0},
+            {0, 1}, {1, 1},
+            {0, 2}, {1, 2},
+            {0, 3}, {1, 3},
+            {0, 4}
+        };
+
+        for (int i = 0; i < moves.GetLength(0); i++)
+        {
+            var currentSession = room.GameState.CurrentPlayer == PlayerSymbol.X ? s1 : s2;
+            room.TryMakeMove(currentSession.Id, moves[i, 0], moves[i, 1]);
+        }
+
+        var firstRequest = room.HandleRematchRequest(s1.Id);
+        var secondRequest = room.HandleRematchRequest(s2.Id);
+
+        Assert.True(firstRequest.Success);
+        Assert.False(firstRequest.BothAccepted);
+        Assert.True(secondRequest.Success);
+        Assert.True(secondRequest.BothAccepted);
+        Assert.Equal(GameStatus.Playing, room.GameState.Status);
+        Assert.Equal(0, room.GameState.MoveCount);
+    }
 }
 
 public sealed class RoomManagerTests

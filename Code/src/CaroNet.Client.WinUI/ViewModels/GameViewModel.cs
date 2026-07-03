@@ -24,7 +24,9 @@ public sealed class GameViewModel : INotifyPropertyChanged
     private string _playerSymbol = "?";
     private string _roomId = string.Empty;
     private string _serverError = string.Empty;
+    private bool _isGameEnded;
     private string _chatInputText = string.Empty;
+    private BoardPosition? _lastMovePosition;
 
     public ObservableCollection<ChatMessageViewModel> ChatMessages { get; } = [];
 
@@ -127,13 +129,48 @@ public sealed class GameViewModel : INotifyPropertyChanged
     public string ConnectionStatus
     {
         get => _connectionStatus;
-        private set => SetProperty(ref _connectionStatus, value);
+        set => SetProperty(ref _connectionStatus, value);
     }
 
     public string ServerError
     {
         get => _serverError;
-        private set => SetProperty(ref _serverError, value);
+        set => SetProperty(ref _serverError, value);
+    }
+
+    public bool IsGameEnded
+    {
+        get => _isGameEnded;
+        private set => SetProperty(ref _isGameEnded, value);
+    }
+
+    public BoardPosition? LastMovePosition
+    {
+        get => _lastMovePosition;
+        private set => SetProperty(ref _lastMovePosition, value);
+    }
+
+    public bool IsMyTurn =>
+        !string.IsNullOrWhiteSpace(RoomId) &&
+        !string.IsNullOrWhiteSpace(PlayerSymbol) &&
+        PlayerSymbol != "?" &&
+        CurrentTurnSymbol == PlayerSymbol;
+
+    public string TurnMessage
+    {
+        get
+        {
+            if (string.IsNullOrWhiteSpace(RoomId) ||
+                string.IsNullOrWhiteSpace(PlayerSymbol) ||
+                PlayerSymbol == "?")
+            {
+                return "Đang chờ đối thủ...";
+            }
+
+            return IsMyTurn
+                ? "🎯 Lượt của bạn!"
+                : "⏳ Đợi đối thủ...";
+        }
     }
 
     public bool IsMyTurn => CurrentTurnSymbol == PlayerSymbol && !string.IsNullOrEmpty(PlayerSymbol);
@@ -151,6 +188,11 @@ public sealed class GameViewModel : INotifyPropertyChanged
 
     public async Task MakeMoveAsync(int row, int column)
     {
+        if (IsGameEnded)
+        {
+            return;
+        }
+
         try
         {
             await _gameClient.MakeMoveAsync(new BoardPosition(row, column), CancellationToken.None);
@@ -211,14 +253,68 @@ public sealed class GameViewModel : INotifyPropertyChanged
         }
     }
 
+<<<<<<< HEAD
+=======
+    private void GameClient_GameStateUpdated(object? sender, GameViewState state)
+    {
+        SafeExecuteOnUI(() => ApplyState(state));
+    }
+
+>>>>>>> 07eb0edcf3bb2867b413bc3ed4095f9f32b4fb2a
     private void ApplyState(GameViewState state)
     {
+        BoardPosition? detectedLastMove = null;
+        var changedMoveCount = 0;
+
+        foreach (var cellState in state.Cells)
+        {
+            int index = cellState.Row * BoardSize + cellState.Column;
+            if (index >= 0 &&
+                index < BoardCells.Count &&
+                BoardCells[index].Mark != cellState.Mark &&
+                !string.IsNullOrEmpty(cellState.Mark))
+            {
+                detectedLastMove = new BoardPosition(cellState.Row, cellState.Column);
+                changedMoveCount++;
+            }
+        }
+
         RoomId = state.RoomId;
         PlayerName = state.PlayerName;
         PlayerSymbol = state.PlayerSymbol;
         CurrentTurnSymbol = state.CurrentTurnSymbol;
-        ConnectionStatus = state.ConnectionStatus;
         ServerError = state.ServerError;
+
+        if (state.ConnectionStatus != null && (state.ConnectionStatus.StartsWith("Trận đấu mới") || state.ConnectionStatus.Contains("Đã vào phòng")))
+        {
+            ConnectionStatus = state.ConnectionStatus;
+            IsGameEnded = false;
+
+            foreach (var cell in BoardCells)
+            {
+                cell.Mark = string.Empty;
+                cell.IsWinningCell = false;
+                cell.IsLastMove = false;
+                cell.IsInteractionEnabled = true;
+            }
+        }
+        else
+        {
+            if (_connectionStatus == "Đang chờ đối thủ xác nhận...")
+            {
+                if (!string.IsNullOrEmpty(state.ConnectionStatus) &&
+                   (state.ConnectionStatus.StartsWith("Trận đấu mới") || state.ConnectionStatus == "Đối thủ muốn chơi lại!"))
+                {
+                    ConnectionStatus = state.ConnectionStatus;
+                }
+            }
+            else
+            {
+                ConnectionStatus = state.ConnectionStatus ?? ConnectionStatus;
+            }
+
+            IsGameEnded = (state.ConnectionStatus == "Trò chơi kết thúc" || ServerError == "Ván đấu đã kết thúc.");
+        }
 
         foreach (var cellState in state.Cells)
         {
@@ -229,19 +325,54 @@ public sealed class GameViewModel : INotifyPropertyChanged
             }
         }
 
+        LastMovePosition = changedMoveCount == 1 ? detectedLastMove : null;
+        foreach (var cell in BoardCells)
+        {
+            cell.IsLastMove =
+                LastMovePosition is { } lastMove &&
+                cell.Row == lastMove.Row &&
+                cell.Column == lastMove.Column;
+        }
+
+        if (IsGameEnded || _connectionStatus == "Đang chờ đối thủ xác nhận...")
+        {
+            foreach (var cell in BoardCells)
+            {
+                cell.IsInteractionEnabled = false;
+            }
+
+            if (_gameClient is SocketGameClientService socketService)
+            {
+                var targetCells = socketService.WinningCells;
+                if (targetCells != null && targetCells.Count > 0)
+                {
+                    foreach (var target in targetCells)
+                    {
+                        int index = target.Row * BoardSize + target.Col;
+                        if (index >= 0 && index < BoardCells.Count)
+                        {
+                            BoardCells[index].IsWinningCell = true;
+                        }
+                    }
+                }
+            }
+        }
+
         PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(IsChatInputEnabled)));
         PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(IsSendButtonEnabled)));
+<<<<<<< HEAD
         OnPropertyChanged(nameof(IsMyTurn));
         OnPropertyChanged(nameof(TurnMessage));
+=======
+        PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(IsMyTurn)));
+        PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(TurnMessage)));
+        PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(LastMovePosition)));
+>>>>>>> 07eb0edcf3bb2867b413bc3ed4095f9f32b4fb2a
     }
 
     private void SetProperty<T>(ref T field, T value, [CallerMemberName] string? propertyName = null)
     {
-        if (EqualityComparer<T>.Default.Equals(field, value))
-        {
-            return;
-        }
-
+        if (EqualityComparer<T>.Default.Equals(field, value)) return;
         field = value;
         PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(propertyName));
     }
@@ -256,8 +387,73 @@ public sealed class GameViewModel : INotifyPropertyChanged
         ChatMessages.Add(new ChatMessageViewModel(payload.SenderName, payload.Message, payload.Timestamp));
     }
 
+<<<<<<< HEAD
     private void OnPropertyChanged([CallerMemberName] string? propertyName = null)
     {
         PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(propertyName));
+=======
+public sealed class BoardCellViewModel : INotifyPropertyChanged
+{
+    private string _mark = string.Empty;
+    private bool _isWinningCell;
+    private bool _isInteractionEnabled = true;
+    private bool _isLastMove;
+
+    public BoardCellViewModel(int row, int column)
+    {
+        Row = row;
+        Column = column;
     }
+
+    public event PropertyChangedEventHandler? PropertyChanged;
+    public int Row { get; }
+    public int Column { get; }
+
+    public string Mark
+    {
+        get => _mark;
+        set
+        {
+            if (_mark == value) return;
+            _mark = value;
+            PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(Mark)));
+        }
+>>>>>>> 07eb0edcf3bb2867b413bc3ed4095f9f32b4fb2a
+    }
+
+    public bool IsWinningCell
+    {
+        get => _isWinningCell;
+        set
+        {
+            if (_isWinningCell == value) return;
+            _isWinningCell = value;
+            PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(IsWinningCell)));
+        }
+    }
+
+    public bool IsInteractionEnabled
+    {
+        get => _isInteractionEnabled;
+        set
+        {
+            if (_isInteractionEnabled == value) return;
+            _isInteractionEnabled = value;
+            PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(IsInteractionEnabled)));
+        }
+    }
+
+    public bool IsLastMove
+    {
+        get => _isLastMove;
+        set
+        {
+            if (_isLastMove == value) return;
+            _isLastMove = value;
+            PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(IsLastMove)));
+            PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(LastMoveIndicatorOpacity)));
+        }
+    }
+
+    public double LastMoveIndicatorOpacity => IsLastMove ? 1.0 : 0.0;
 }
