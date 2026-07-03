@@ -283,4 +283,34 @@ public sealed class RoomManagerTests
         Assert.NotNull(found);
         Assert.Equal(room.RoomId, found.RoomId);
     }
+
+    [Fact]
+    public void CreateRoom_SameSessionAlreadyInRoom_ReturnsNullWithoutCreatingGhostRoom()
+    {
+        var manager = new RoomManager();
+        var session = CreateDummySession();
+        manager.CreateRoom(session, "Alice");
+
+        var secondRoom = manager.CreateRoom(session, "Alice");
+
+        Assert.Null(secondRoom);
+        Assert.Equal(1, manager.RoomCount);
+    }
+
+    [Fact]
+    public void JoinRoom_SameSessionAlreadyInRoom_ReturnsNullAndKeepsOriginalRoom()
+    {
+        var manager = new RoomManager();
+        var alice = CreateDummySession();
+        var bob = CreateDummySession();
+        var firstRoom = manager.CreateRoom(alice, "Alice")!;
+        var secondRoom = manager.CreateRoom(bob, "Bob")!;
+
+        var (joinedRoom, symbol) = manager.JoinRoom(alice, secondRoom.RoomId, "Alice");
+
+        Assert.Null(joinedRoom);
+        Assert.Null(symbol);
+        Assert.Equal(firstRoom.RoomId, manager.GetRoomBySession(alice.Id)?.RoomId);
+        Assert.False(secondRoom.IsFull);
+    }
 }

@@ -68,6 +68,42 @@ public sealed class SocketGameClientServiceTests
     }
 
     [Fact]
+    public async Task CreateRoomAsync_CompletesImmediately_WhenConnectionFailsWhileWaiting()
+    {
+        var connection = new FakeClientConnection();
+        var service = new SocketGameClientService(connection);
+
+        Task<GameViewState> createRoomTask = service.CreateRoomAsync(
+            new CancellationTokenSource(TimeSpan.FromSeconds(5)).Token);
+
+        connection.RaiseConnectionError(new InvalidOperationException("Socket closed"));
+
+        var exception = await Assert.ThrowsAsync<InvalidOperationException>(
+            () => createRoomTask);
+
+        Assert.Contains("Socket closed", exception.Message);
+        Assert.Contains("Socket closed", service.CurrentState.ServerError);
+    }
+
+    [Fact]
+    public async Task CreateRoomAsync_CompletesImmediately_WhenDisconnectedWhileWaiting()
+    {
+        var connection = new FakeClientConnection();
+        var service = new SocketGameClientService(connection);
+
+        Task<GameViewState> createRoomTask = service.CreateRoomAsync(
+            new CancellationTokenSource(TimeSpan.FromSeconds(5)).Token);
+
+        await connection.DisconnectAsync();
+
+        var exception = await Assert.ThrowsAsync<InvalidOperationException>(
+            () => createRoomTask);
+
+        Assert.Equal("Mất kết nối server", exception.Message);
+        Assert.Equal("Mất kết nối server", service.CurrentState.ConnectionStatus);
+    }
+
+    [Fact]
     public async Task GameStateUpdated_updates_board_from_server_state()
     {
         var connection = new FakeClientConnection();
@@ -338,9 +374,11 @@ public sealed class SocketGameClientServiceTests
 
         public event EventHandler<Exception>? ConnectionError
         {
-            add { }
-            remove { }
+            add => _connectionError += value;
+            remove => _connectionError -= value;
         }
+
+        private event EventHandler<Exception>? _connectionError;
 
         public event EventHandler? Disconnected;
 
@@ -373,6 +411,11 @@ public sealed class SocketGameClientServiceTests
             MessageReceived?.Invoke(
                 this,
                 new ClientMessageReceivedEventArgs(message));
+        }
+
+        public void RaiseConnectionError(Exception exception)
+        {
+            _connectionError?.Invoke(this, exception);
         }
 
         public ValueTask DisposeAsync()

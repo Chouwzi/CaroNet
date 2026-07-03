@@ -399,11 +399,14 @@ public sealed class SocketGameClientService : IGameClientService, IAsyncDisposab
 
     private void Connection_Disconnected(object? sender, EventArgs args)
     {
+        const string disconnectedMessage = "Mất kết nối server";
+
         lock (_stateLock)
         {
-            _connectionStatus = "Mất kết nối server";
+            _connectionStatus = disconnectedMessage;
         }
 
+        _roomJoinedCompletion?.TrySetException(new InvalidOperationException(disconnectedMessage));
         PublishState();
     }
 
@@ -425,6 +428,7 @@ public sealed class SocketGameClientService : IGameClientService, IAsyncDisposab
             _serverError = error;
         }
 
+        _roomJoinedCompletion?.TrySetException(new InvalidOperationException(error));
         PublishState();
     }
 

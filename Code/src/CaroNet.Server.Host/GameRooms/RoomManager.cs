@@ -15,6 +15,11 @@ public sealed class RoomManager
 
     public GameRoom? CreateRoom(ClientSession session, string playerName)
     {
+        if (IsSessionInRoom(session.Id))
+        {
+            return null;
+        }
+
         if (_rooms.Count >= MaxRooms)
             return null;
 
@@ -35,6 +40,11 @@ public sealed class RoomManager
     public (GameRoom? room, Shared.Game.PlayerSymbol? symbol) JoinRoom(
         ClientSession session, string roomId, string playerName)
     {
+        if (IsSessionInRoom(session.Id))
+        {
+            return (null, null);
+        }
+
         if (!_rooms.TryGetValue(roomId, out GameRoom? room))
             return (null, null);
 
@@ -61,6 +71,11 @@ public sealed class RoomManager
         if (_sessionRoomMap.TryGetValue(sessionId, out string? roomId))
             return GetRoom(roomId);
         return null;
+    }
+
+    public bool IsSessionInRoom(Guid sessionId)
+    {
+        return _sessionRoomMap.ContainsKey(sessionId);
     }
 
     // Xử lý ngắt kết nối: xóa khỏi phòng, dọn phòng trống.

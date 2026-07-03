@@ -24,6 +24,8 @@ public sealed class GameMessageDispatcher : IMessageDispatcher
 
     private readonly System.Collections.Concurrent.ConcurrentDictionary<Guid, string> _playerNames = new();
     private readonly System.Collections.Concurrent.ConcurrentDictionary<Guid, DateTime> _lastRequestTimes = new();
+    private readonly System.Collections.Concurrent.ConcurrentDictionary<string, SemaphoreSlim> _playerRecordLocks =
+        new(StringComparer.OrdinalIgnoreCase);
 
     public GameMessageDispatcher(
         RoomManager roomManager,
@@ -177,6 +179,12 @@ public sealed class GameMessageDispatcher : IMessageDispatcher
     {
         string playerName = GetPlayerName(session.Id);
 
+        if (_roomManager.IsSessionInRoom(session.Id))
+        {
+            await SendErrorAsync(session, "Bạn đã ở trong phòng chơi.", cancellationToken);
+            return;
+        }
+
         GameRoom? room = _roomManager.CreateRoom(session, playerName);
 
         if (room is null)
@@ -223,6 +231,12 @@ public sealed class GameMessageDispatcher : IMessageDispatcher
         }
 
         string playerName = GetPlayerName(session.Id);
+
+        if (_roomManager.IsSessionInRoom(session.Id))
+        {
+            await SendErrorAsync(session, "Bạn đã ở trong phòng chơi.", cancellationToken);
+            return;
+        }
 
         var (room, symbol) = _roomManager.JoinRoom(session, roomId, playerName);
 
@@ -609,28 +623,39 @@ public sealed class GameMessageDispatcher : IMessageDispatcher
     {
         if (_playerRecordStore == null) return;
 
-        var record = await _playerRecordStore.GetAsync(playerName);
+        string normalizedName = playerName.Trim();
+        SemaphoreSlim playerLock = _playerRecordLocks.GetOrAdd(normalizedName, _ => new SemaphoreSlim(1, 1));
 
-        int wins = record?.Wins ?? 0;
-        int losses = record?.Losses ?? 0;
-        int draws = record?.Draws ?? 0;
+        await playerLock.WaitAsync();
+        try
+        {
+            var record = await _playerRecordStore.GetAsync(normalizedName);
 
-        if (isDraw)
-        {
-            draws++;
-        }
-        else if (isWinner)
-        {
-            wins++;
-        }
-        else
-        {
-            losses++;
-        }
+            int wins = record?.Wins ?? 0;
+            int losses = record?.Losses ?? 0;
+            int draws = record?.Draws ?? 0;
 
-        var updatedRecord = new PlayerRecord(playerName, wins, losses, draws);
-        await _playerRecordStore.SaveAsync(updatedRecord);
-        Console.WriteLine($"[STATISTICS] Updated {playerName}: {wins}W - {losses}L - {draws}D");
+            if (isDraw)
+            {
+                draws++;
+            }
+            else if (isWinner)
+            {
+                wins++;
+            }
+            else
+            {
+                losses++;
+            }
+
+            var updatedRecord = new PlayerRecord(normalizedName, wins, losses, draws);
+            await _playerRecordStore.SaveAsync(updatedRecord);
+            Console.WriteLine($"[STATISTICS] Updated {normalizedName}: {wins}W - {losses}L - {draws}D");
+        }
+        finally
+        {
+            playerLock.Release();
+        }
     }
 
     private async Task HandleRematchAsync(

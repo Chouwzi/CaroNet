@@ -123,6 +123,30 @@ namespace CaroNet.Server.Host.Tests
         }
 
         [Fact]
+        public async Task DispatchAsync_ShouldRejectCreateRoom_WhenSessionAlreadyInRoom()
+        {
+            var createRoom = new MessageEnvelope
+            {
+                Type = MessageType.CreateRoom,
+                Payload = JsonSerializer.SerializeToElement(new { })
+            };
+
+            await _dispatcher.DispatchAsync(_session, createRoom, CancellationToken.None);
+            Assert.Equal(MessageType.RoomJoined, ReceiveEnvelope().Type);
+
+            await Task.Delay(150);
+            await _dispatcher.DispatchAsync(_session, createRoom, CancellationToken.None);
+
+            MessageEnvelope error = ReceiveEnvelope();
+
+            Assert.Equal(MessageType.Error, error.Type);
+            Assert.True(error.Payload.HasValue);
+
+            using var doc = JsonDocument.Parse(error.Payload.Value.GetRawText());
+            Assert.Equal("Bạn đã ở trong phòng chơi.", doc.RootElement.GetProperty("message").GetString());
+        }
+
+        [Fact]
         public async Task SaveMatchHistoryAsync_ShouldUpdatePlayerRecords_WhenGameEnds()
         {
             var store = new InMemoryPlayerRecordStore();
@@ -145,6 +169,39 @@ namespace CaroNet.Server.Host.Tests
 
             Assert.Equal(new PlayerRecord("Alice", 1, 0, 1), alice);
             Assert.Equal(new PlayerRecord("Bob", 0, 1, 1), bob);
+        }
+
+        [Fact]
+        public async Task SaveMatchHistoryAsync_ShouldNotLosePlayerRecordUpdates_WhenMatchesEndConcurrently()
+        {
+            var store = new DelayedInMemoryPlayerRecordStore();
+            var dispatcher = new GameMessageDispatcher(
+                new RoomManager(),
+                new ClientSessionRegistry(),
+                playerRecordStore: store);
+
+            using var alicePair1 = SocketPair.Create(dispatcher);
+            using var bobPair1 = SocketPair.Create(dispatcher);
+            using var alicePair2 = SocketPair.Create(dispatcher);
+            using var bobPair2 = SocketPair.Create(dispatcher);
+
+            var room1 = new GameRoom();
+            room1.TryAddPlayer(alicePair1.ServerSession, "Alice");
+            room1.TryAddPlayer(bobPair1.ServerSession, "Bob");
+
+            var room2 = new GameRoom();
+            room2.TryAddPlayer(alicePair2.ServerSession, "Alice");
+            room2.TryAddPlayer(bobPair2.ServerSession, "Bob");
+
+            await Task.WhenAll(
+                InvokeSaveMatchHistoryAsync(dispatcher, room1, GameStatus.XWon),
+                InvokeSaveMatchHistoryAsync(dispatcher, room2, GameStatus.XWon));
+
+            PlayerRecord? alice = await store.GetAsync("Alice");
+            PlayerRecord? bob = await store.GetAsync("Bob");
+
+            Assert.Equal(new PlayerRecord("Alice", 2, 0, 0), alice);
+            Assert.Equal(new PlayerRecord("Bob", 0, 2, 0), bob);
         }
 
         private static async Task InvokeSaveMatchHistoryAsync(
@@ -214,6 +271,33 @@ namespace CaroNet.Server.Host.Tests
             {
                 _records.TryGetValue(playerName, out PlayerRecord? record);
                 return Task.FromResult(record);
+            }
+
+            public Task<IReadOnlyList<PlayerRecord>> GetTopPlayersAsync(
+                int limit,
+                CancellationToken cancellationToken = default)
+            {
+                IReadOnlyList<PlayerRecord> records = _records.Values.Take(limit).ToList();
+                return Task.FromResult(records);
+            }
+        }
+
+        private sealed class DelayedInMemoryPlayerRecordStore : IPlayerRecordStore
+        {
+            private readonly System.Collections.Concurrent.ConcurrentDictionary<string, PlayerRecord> _records =
+                new(StringComparer.OrdinalIgnoreCase);
+
+            public async Task SaveAsync(PlayerRecord record, CancellationToken cancellationToken = default)
+            {
+                await Task.Delay(25, cancellationToken);
+                _records[record.PlayerName] = record;
+            }
+
+            public async Task<PlayerRecord?> GetAsync(string playerName, CancellationToken cancellationToken = default)
+            {
+                await Task.Delay(25, cancellationToken);
+                _records.TryGetValue(playerName, out PlayerRecord? record);
+                return record;
             }
 
             public Task<IReadOnlyList<PlayerRecord>> GetTopPlayersAsync(
