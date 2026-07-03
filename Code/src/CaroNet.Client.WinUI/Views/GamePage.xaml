@@ -18,6 +18,7 @@
             <Setter Property="BorderThickness" Value="0,0,1,1"/>
             <Setter Property="BorderBrush" Value="{ThemeResource CardStrokeColorDefaultBrush}"/>
             <Setter Property="Background" Value="{ThemeResource LayerFillColorDefaultBrush}"/>
+            <Setter Property="Foreground" Value="{ThemeResource TextFillColorPrimaryBrush}"/>
             <Setter Property="CornerRadius" Value="0"/>
             <Setter Property="HorizontalAlignment" Value="Stretch"/>
             <Setter Property="VerticalAlignment" Value="Stretch"/>
@@ -30,13 +31,12 @@
 
     <Grid Background="{ThemeResource ApplicationPageBackgroundThemeBrush}"
           Padding="10">
-
         <Grid RowDefinitions="92,*"
               ColumnDefinitions="*,360"
               RowSpacing="10"
               ColumnSpacing="10">
 
-            <!-- ================= HEADER BLOCK ================= -->
+            <!-- Header -->
             <Border Grid.Row="0"
                     Grid.Column="0"
                     Grid.ColumnSpan="2"
@@ -45,81 +45,66 @@
                     BorderThickness="1"
                     CornerRadius="18"
                     Padding="24,0">
-
                 <Grid ColumnDefinitions="*,180,*">
-
-                    <!-- Player A -->
                     <StackPanel Grid.Column="0"
                                 VerticalAlignment="Center"
                                 Spacing="2">
-
                         <TextBlock Text="PLAYER"
                                    Foreground="{ThemeResource TextFillColorSecondaryBrush}"
                                    FontSize="12"
                                    FontWeight="SemiBold"/>
-
                         <TextBlock Text="{Binding PlayerName}"
                                    Foreground="{ThemeResource TextFillColorPrimaryBrush}"
                                    FontSize="20"
                                    FontWeight="SemiBold"/>
-
                         <TextBlock Text="{Binding ConnectionStatus}"
                                    Foreground="{ThemeResource TextFillColorSecondaryBrush}"
                                    FontSize="14"
                                    FontWeight="SemiBold"/>
                     </StackPanel>
 
-                    <!-- Score -->
                     <StackPanel Grid.Column="1"
                                 Orientation="Horizontal"
                                 HorizontalAlignment="Center"
                                 VerticalAlignment="Center"
                                 Spacing="18">
-
                         <TextBlock Text="{Binding PlayerSymbol}"
                                    Foreground="{ThemeResource TextFillColorPrimaryBrush}"
                                    FontSize="30"
                                    FontWeight="Bold"/>
-
                         <TextBlock Text="/"
                                    Foreground="{ThemeResource TextFillColorSecondaryBrush}"
                                    FontSize="26"
                                    FontWeight="SemiBold"/>
-
                         <TextBlock Text="{Binding CurrentTurnSymbol}"
                                    Foreground="{ThemeResource TextFillColorPrimaryBrush}"
                                    FontSize="30"
                                    FontWeight="Bold"/>
                     </StackPanel>
 
-                    <!-- Player B -->
                     <StackPanel Grid.Column="2"
                                 VerticalAlignment="Center"
                                 HorizontalAlignment="Right"
                                 Spacing="2">
-
                         <TextBlock Text="ROOM"
                                    Foreground="{ThemeResource TextFillColorSecondaryBrush}"
                                    FontSize="12"
                                    FontWeight="SemiBold"
                                    HorizontalAlignment="Right"/>
-
                         <TextBlock Text="{Binding RoomId}"
                                    Foreground="{ThemeResource TextFillColorPrimaryBrush}"
                                    FontSize="20"
                                    FontWeight="SemiBold"/>
-
                         <TextBlock Text="Server authoritative"
                                    Foreground="{ThemeResource TextFillColorSecondaryBrush}"
                                    FontSize="14"
                                    FontWeight="SemiBold"
                                    HorizontalAlignment="Right"/>
                     </StackPanel>
-
                 </Grid>
             </Border>
 
-            <!-- ================= BOARD BLOCK ================= -->
+            <!-- Main Game Area -->
             <Border Grid.Row="1"
                     Grid.Column="0"
                     Background="{ThemeResource CardBackgroundFillColorDefaultBrush}"
@@ -127,21 +112,27 @@
                     BorderThickness="1"
                     CornerRadius="22"
                     Padding="24">
-
-                <Grid RowDefinitions="*"
+                <Grid RowDefinitions="Auto,*"
                       RowSpacing="18">
 
-                    <!-- <StackPanel Grid.Row="0"
-                                Spacing="4">
+                    <!-- Turn Banner -->
+                    <Border x:Name="TurnBanner"
+                            Grid.Row="0"
+                            Background="#E8F5E9"
+                            CornerRadius="10"
+                            Padding="16,12"
+                            BorderThickness="1"
+                            BorderBrush="#A5D6A7">
+                        <TextBlock Text="{Binding TurnMessage}"
+                                   FontSize="20"
+                                   FontWeight="SemiBold"
+                                   HorizontalAlignment="Center"
+                                   Foreground="#1B5E20"/>
+                    </Border>
 
-                        <TextBlock Text="Caro Board"
-                                   Foreground="{ThemeResource TextFillColorPrimaryBrush}"
-                                   FontSize="22"
-                                   FontWeight="SemiBold"/>
-                    </StackPanel> -->
-
-                    <Viewbox Stretch="Uniform">
-
+                    <!-- Board -->
+                    <Viewbox Grid.Row="1"
+                             Stretch="Uniform">
                         <Border Width="620"
                                 Height="620"
                                 Background="{ThemeResource LayerFillColorDefaultBrush}"
@@ -149,136 +140,150 @@
                                 BorderThickness="1"
                                 CornerRadius="16"
                                 Padding="10">
-
                             <Grid x:Name="BoardGrid"
-                                    Background="{ThemeResource LayerFillColorDefaultBrush}"/>
-
+                                  Background="{ThemeResource LayerFillColorDefaultBrush}"/>
                         </Border>
-
                     </Viewbox>
-
                 </Grid>
             </Border>
 
-            <!-- ================= RIGHT SIDE ================= -->
+            <!-- Right Sidebar -->
             <Grid Grid.Row="1"
                   Grid.Column="1"
                   RowDefinitions="220,*,76"
                   RowSpacing="16">
 
-                <!-- ========== INFO BLOCK ========== -->
+                <!-- Match Info -->
                 <Border Grid.Row="0"
                         Background="{ThemeResource CardBackgroundFillColorDefaultBrush}"
                         BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}"
                         BorderThickness="1"
                         CornerRadius="22"
                         Padding="20">
-
                     <StackPanel Spacing="16">
-
-                        <StackPanel Spacing="4">
-                            <TextBlock Text="Match Info"
-                                       Foreground="{ThemeResource TextFillColorPrimaryBrush}"
-                                       FontSize="21"
-                                       FontWeight="SemiBold"/>
-                        </StackPanel>
+                        <TextBlock Text="Match Info"
+                                   Foreground="{ThemeResource TextFillColorPrimaryBrush}"
+                                   FontSize="21"
+                                   FontWeight="SemiBold"/>
 
                         <Grid RowDefinitions="Auto,Auto,Auto"
                               RowSpacing="10">
-
-                            <Grid Grid.Row="0"
-                                  ColumnDefinitions="*,Auto">
-
+                            <Grid Grid.Row="0" ColumnDefinitions="*,Auto">
                                 <TextBlock Text="Your symbol"
                                            Foreground="{ThemeResource TextFillColorSecondaryBrush}"
                                            FontSize="14"/>
-
                                 <TextBlock Grid.Column="1"
                                            Text="{Binding PlayerSymbol}"
                                            Foreground="{ThemeResource TextFillColorPrimaryBrush}"
                                            FontSize="14"
                                            FontWeight="SemiBold"/>
                             </Grid>
-
-                            <Grid Grid.Row="1"
-                                  ColumnDefinitions="*,Auto">
-
+                            <Grid Grid.Row="1" ColumnDefinitions="*,Auto">
                                 <TextBlock Text="Room"
                                            Foreground="{ThemeResource TextFillColorSecondaryBrush}"
                                            FontSize="14"/>
-
                                 <TextBlock Grid.Column="1"
                                            Text="{Binding RoomId}"
                                            Foreground="{ThemeResource TextFillColorPrimaryBrush}"
                                            FontSize="14"
                                            FontWeight="SemiBold"/>
                             </Grid>
-
-                            <Grid Grid.Row="2"
-                                  ColumnDefinitions="*,Auto">
-
+                            <Grid Grid.Row="2" ColumnDefinitions="*,Auto">
                                 <TextBlock Text="Current turn"
                                            Foreground="{ThemeResource TextFillColorSecondaryBrush}"
                                            FontSize="14"/>
-
                                 <TextBlock Grid.Column="1"
                                            Text="{Binding CurrentTurnSymbol}"
                                            Foreground="{ThemeResource TextFillColorPrimaryBrush}"
                                            FontSize="14"
                                            FontWeight="SemiBold"/>
                             </Grid>
-
                         </Grid>
                     </StackPanel>
                 </Border>
 
-                <!-- ========== CHAT BLOCK ========== -->
+                <!-- Chat (Giữ phiên bản đầy đủ từ develop) -->
                 <Border Grid.Row="1"
                         Background="{ThemeResource CardBackgroundFillColorDefaultBrush}"
                         BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}"
                         BorderThickness="1"
                         CornerRadius="22"
                         Padding="20">
+                    <Grid RowDefinitions="Auto,*,Auto">
+                        <StackPanel Grid.Row="0" Spacing="4" Margin="0,0,0,8">
+                            <TextBlock Text="Chat"
+                                       Foreground="{ThemeResource TextFillColorPrimaryBrush}"
+                                       FontSize="21"
+                                       FontWeight="SemiBold"/>
+                            <TextBlock Text="{Binding ConnectionStatus}"
+                                       Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                                       FontSize="13"
+                                       TextWrapping="Wrap"/>
+                        </StackPanel>
 
-                    <StackPanel Spacing="12">
-                        <TextBlock Text="Chat"
-                                   Foreground="{ThemeResource TextFillColorPrimaryBrush}"
-                                   FontSize="21"
-                                   FontWeight="SemiBold"/>
-
-                        <TextBlock Text="{Binding ConnectionStatus}"
-                                   Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                        <TextBlock x:Name="EmptyStateTextBlock"
+                                   Grid.Row="1"
+                                   Text="Chưa có tin nhắn"
+                                   Foreground="{ThemeResource TextFillColorDisabledBrush}"
                                    FontSize="14"
-                                   TextWrapping="Wrap"/>
+                                   FontStyle="Italic"
+                                   HorizontalAlignment="Center"
+                                   VerticalAlignment="Center"/>
 
-                        <TextBlock Text="{Binding ServerError}"
+                        <ListView x:Name="ChatListView"
+                                  Grid.Row="1"
+                                  ItemsSource="{Binding ChatMessages}"
+                                  SelectionMode="None"
+                                  Background="Transparent"
+                                  BorderThickness="0">
+                            <ListView.ItemTemplate>
+                                <DataTemplate>
+                                    <TextBlock TextWrapping="Wrap" Margin="0,3" FontSize="14">
+                                        <Run Text="[" Foreground="{ThemeResource TextFillColorSecondaryBrush}"/>
+                                        <Run Text="{Binding SenderName}" FontWeight="SemiBold" Foreground="{ThemeResource SystemFillColorAccentBrush}"/>
+                                        <Run Text="]: " Foreground="{ThemeResource TextFillColorSecondaryBrush}"/>
+                                        <Run Text="{Binding Message}"/>
+                                    </TextBlock>
+                                </DataTemplate>
+                            </ListView.ItemTemplate>
+                        </ListView>
+
+                        <TextBlock Grid.Row="2"
+                                   Text="{Binding ServerError}"
                                    Foreground="{ThemeResource SystemFillColorCriticalBrush}"
-                                   FontSize="14"
-                                   TextWrapping="Wrap"/>
-                    </StackPanel>
+                                   FontSize="13"
+                                   TextWrapping="Wrap"
+                                   Margin="0,6,0,0"/>
+                    </Grid>
                 </Border>
 
-                <!-- ========== CHAT INPUT BLOCK ========== -->
+                <!-- Chat Input -->
                 <Border Grid.Row="2"
                         Background="{ThemeResource CardBackgroundFillColorDefaultBrush}"
                         BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}"
                         BorderThickness="1"
                         CornerRadius="22"
                         Padding="12">
-
                     <Grid ColumnDefinitions="*,52"
                           ColumnSpacing="10">
-
-                        <TextBox Grid.Column="0"
+                        <TextBox x:Name="ChatInputTextBox"
+                                 Grid.Column="0"
                                  PlaceholderText="Nhập chat..."
+                                 Text="{Binding ChatInputText, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
+                                 IsEnabled="{Binding IsChatInputEnabled}"
                                  FontSize="15"
                                  BorderBrush="{ThemeResource ControlStrokeColorDefaultBrush}"
                                  BorderThickness="1"
                                  CornerRadius="14"
                                  Padding="14,8"/>
 
-                        <Button Grid.Column="1"
+                        <Button x:Name="SendChatButton"
+                                Grid.Column="1"
                                 Content="➜"
+                                Click="SendChatButton_Click"
+                                IsEnabled="{Binding IsSendButtonEnabled}"
+                                MinWidth="44"
+                                MinHeight="44"
                                 FontSize="20"
                                 FontWeight="SemiBold"
                                 CornerRadius="14"/>
@@ -286,7 +291,6 @@
                 </Border>
 
             </Grid>
-
         </Grid>
     </Grid>
 </Page>
