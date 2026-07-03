@@ -41,6 +41,8 @@ public interface IGameClientService
 
     Task<IReadOnlyList<MatchSummary>> GetMyHistoryAsync(CancellationToken cancellationToken);
 
+    Task<IReadOnlyList<PlayerRecordSummary>> GetTopRecordsAsync(CancellationToken cancellationToken);
+
     Task MakeMoveAsync(BoardPosition position, CancellationToken cancellationToken);
 
     Task SendResignAsync(CancellationToken cancellationToken = default);

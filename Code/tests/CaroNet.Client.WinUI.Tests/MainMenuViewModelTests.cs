@@ -43,6 +43,23 @@ public sealed class MainMenuViewModelTests
         Assert.Contains("Không thể kết nối server", viewModel.ConnectionStatus);
     }
 
+    [Fact]
+    public async Task LoadBestRecordsAsync_uses_top_records_from_game_client()
+    {
+        var service = new AuthenticatedGameClientService(
+            new AuthSession("user-id", "alice", "Alice"));
+        var viewModel = new MainMenuViewModel(service);
+
+        await viewModel.LoadBestRecordsAsync();
+
+        BestRecordItem item = Assert.Single(viewModel.BestRecords);
+        Assert.Equal(1, item.Rank);
+        Assert.Equal("Alice", item.PlayerName);
+        Assert.Equal(2, item.Wins);
+        Assert.Equal(1, item.Losses);
+        Assert.True(viewModel.HasBestRecords);
+    }
+
 #pragma warning disable CS0067
     private sealed class AuthenticatedGameClientService : IGameClientService
     {
@@ -108,6 +125,22 @@ public sealed class MainMenuViewModelTests
         {
             IReadOnlyList<MatchSummary> matches = [];
             return Task.FromResult(matches);
+        }
+
+        public Task<IReadOnlyList<PlayerRecordSummary>> GetTopRecordsAsync(CancellationToken cancellationToken)
+        {
+            IReadOnlyList<PlayerRecordSummary> records =
+            [
+                new PlayerRecordSummary
+                {
+                    PlayerName = "Alice",
+                    Wins = 2,
+                    Losses = 1,
+                    Draws = 0
+                }
+            ];
+
+            return Task.FromResult(records);
         }
 
         public Task MakeMoveAsync(BoardPosition position, CancellationToken cancellationToken) => Task.CompletedTask;
@@ -190,6 +223,12 @@ public sealed class MainMenuViewModelTests
         }
 
         public Task<IReadOnlyList<MatchSummary>> GetMyHistoryAsync(
+            CancellationToken cancellationToken)
+        {
+            throw exception;
+        }
+
+        public Task<IReadOnlyList<PlayerRecordSummary>> GetTopRecordsAsync(
             CancellationToken cancellationToken)
         {
             throw exception;

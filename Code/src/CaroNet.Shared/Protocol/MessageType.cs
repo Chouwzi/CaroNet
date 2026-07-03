@@ -20,6 +20,7 @@ public enum MessageType
     Login = 15,
     QuickMatch = 16,
     MyHistoryRequest = 17,
+    TopRecordsRequest = 18,
 
     // Server -> Client
     HelloAccepted = 50,
@@ -34,6 +35,7 @@ public enum MessageType
     RematchAccepted = 59,
     AuthAccepted = 60,
     MyHistoryReceived = 61,
+    TopRecordsReceived = 62,
 
     Error = 100
 }

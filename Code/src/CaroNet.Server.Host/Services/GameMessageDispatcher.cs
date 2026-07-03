@@ -94,6 +94,10 @@ public sealed class GameMessageDispatcher : IMessageDispatcher
                 await HandleMyHistoryRequestAsync(session, cancellationToken);
                 break;
 
+            case MessageType.TopRecordsRequest:
+                await HandleTopRecordsRequestAsync(session, cancellationToken);
+                break;
+
             case MessageType.JoinRoom:
                 await HandleJoinRoomAsync(session, message, cancellationToken);
                 break;
@@ -1010,6 +1014,34 @@ public sealed class GameMessageDispatcher : IMessageDispatcher
         await session.SendAsync(new MessageEnvelope
         {
             Type = MessageType.MyHistoryReceived,
+            Payload = JsonSerializer.SerializeToElement(payload)
+        }, cancellationToken);
+    }
+
+    private async Task HandleTopRecordsRequestAsync(
+        ClientSession session,
+        CancellationToken cancellationToken)
+    {
+        IReadOnlyList<PlayerRecord> records = _playerRecordStore is null
+            ? []
+            : await _playerRecordStore.GetTopPlayersAsync(10, cancellationToken);
+
+        var payload = new TopRecordsReceivedPayload
+        {
+            Players = records
+                .Select(record => new TopPlayerRecordPayload
+                {
+                    PlayerName = record.PlayerName,
+                    Wins = record.Wins,
+                    Losses = record.Losses,
+                    Draws = record.Draws
+                })
+                .ToList()
+        };
+
+        await session.SendAsync(new MessageEnvelope
+        {
+            Type = MessageType.TopRecordsReceived,
             Payload = JsonSerializer.SerializeToElement(payload)
         }, cancellationToken);
     }

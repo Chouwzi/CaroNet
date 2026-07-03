@@ -271,6 +271,34 @@ namespace CaroNet.Server.Host.Tests
         }
 
         [Fact]
+        public async Task DispatchAsync_TopRecordsRequest_ReturnsPlayerRecords()
+        {
+            var recordStore = new InMemoryPlayerRecordStore();
+            await recordStore.SaveAsync(new PlayerRecord("Alice", 3, 1, 0));
+
+            var dispatcher = new GameMessageDispatcher(
+                new RoomManager(),
+                new ClientSessionRegistry(),
+                playerRecordStore: recordStore);
+            using var alice = SocketPair.Create(dispatcher);
+
+            await dispatcher.DispatchAsync(
+                alice.ServerSession,
+                new MessageEnvelope { Type = MessageType.TopRecordsRequest },
+                CancellationToken.None);
+
+            MessageEnvelope ranking = alice.ReceiveEnvelope();
+
+            Assert.Equal(MessageType.TopRecordsReceived, ranking.Type);
+            Assert.True(ranking.Payload.HasValue);
+            JsonElement players = ranking.Payload.Value.GetProperty("players");
+            JsonElement player = Assert.Single(players.EnumerateArray());
+            Assert.Equal("Alice", player.GetProperty("playerName").GetString());
+            Assert.Equal(3, player.GetProperty("wins").GetInt32());
+            Assert.Equal(1, player.GetProperty("losses").GetInt32());
+        }
+
+        [Fact]
         public async Task DispatchAsync_LeaveRoom_WhenAlone_RemovesRoomFromServer()
         {
             var roomManager = new RoomManager();

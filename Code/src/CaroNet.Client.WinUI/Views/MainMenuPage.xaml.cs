@@ -16,30 +16,6 @@ public sealed partial class MainMenuPage : Page
     {
         InitializeComponent();
         DataContext = _viewModel;
-
-        Loaded += MainMenuPage_Loaded;
-    }
-
-    private async void MainMenuPage_Loaded(
-        object sender,
-        RoutedEventArgs e)
-    {
-        try
-        {
-            await _viewModel.LoadBestRecordsAsync();
-        }
-        catch (Exception ex)
-        {
-            var dialog = new ContentDialog
-            {
-                Title = "Lỗi",
-                Content = $"Không thể tải bảng xếp hạng.\n\n{ex.Message}",
-                CloseButtonText = "OK",
-                XamlRoot = this.XamlRoot
-            };
-
-            await dialog.ShowAsync();
-        }
     }
 
     protected override void OnNavigatedTo(NavigationEventArgs e)

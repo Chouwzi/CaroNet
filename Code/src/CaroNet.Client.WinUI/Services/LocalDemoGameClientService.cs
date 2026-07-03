@@ -124,6 +124,22 @@ public sealed class LocalDemoGameClientService : IGameClientService
         return Task.FromResult(matches);
     }
 
+    public Task<IReadOnlyList<PlayerRecordSummary>> GetTopRecordsAsync(CancellationToken cancellationToken)
+    {
+        IReadOnlyList<PlayerRecordSummary> records =
+        [
+            new PlayerRecordSummary
+            {
+                PlayerName = "Demo",
+                Wins = 1,
+                Losses = 0,
+                Draws = 0
+            }
+        ];
+
+        return Task.FromResult(records);
+    }
+
     public Task MakeMoveAsync(BoardPosition position, CancellationToken cancellationToken)
     {
         if (position.Row < 0 || position.Row >= BoardSize || position.Column < 0 || position.Column >= BoardSize)

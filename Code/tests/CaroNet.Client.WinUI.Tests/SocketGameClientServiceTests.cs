@@ -151,6 +151,44 @@ public sealed class SocketGameClientServiceTests
     }
 
     [Fact]
+    public async Task GetTopRecordsAsync_sends_request_and_parses_top_players()
+    {
+        var connection = new FakeClientConnection();
+        var service = new SocketGameClientService(connection);
+
+        Task<IReadOnlyList<PlayerRecordSummary>> recordsTask = service.GetTopRecordsAsync(
+            new CancellationTokenSource(TimeSpan.FromSeconds(2)).Token);
+
+        Assert.Equal(MessageType.TopRecordsRequest, connection.SentMessages.Last().Type);
+
+        connection.RaiseMessage(new MessageEnvelope
+        {
+            Type = MessageType.TopRecordsReceived,
+            Payload = JsonSerializer.SerializeToElement(new
+            {
+                players = new[]
+                {
+                    new
+                    {
+                        playerName = "Alice",
+                        wins = 3,
+                        losses = 1,
+                        draws = 2
+                    }
+                }
+            })
+        });
+
+        IReadOnlyList<PlayerRecordSummary> records = await recordsTask.WaitAsync(TimeSpan.FromSeconds(2));
+        PlayerRecordSummary record = Assert.Single(records);
+
+        Assert.Equal("Alice", record.PlayerName);
+        Assert.Equal(3, record.Wins);
+        Assert.Equal(1, record.Losses);
+        Assert.Equal(2, record.Draws);
+    }
+
+    [Fact]
     public async Task GameStarted_MarksOpponentAsPresent()
     {
         var connection = new FakeClientConnection();

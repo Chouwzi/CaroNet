@@ -26,6 +26,9 @@ public sealed class MainMenuViewModel : INotifyPropertyChanged
     private string _displayName = string.Empty;
     private bool _isConnected;
     private bool _isAuthenticated;
+    private bool _isActionBusy;
+    private string _actionStatus = string.Empty;
+    private string _rankingStatus = "Mở Ranking để tải Top 10.";
 
     public MainMenuViewModel(IGameClientService gameClient)
     {
@@ -50,36 +53,48 @@ public sealed class MainMenuViewModel : INotifyPropertyChanged
     public async Task LoadBestRecordsAsync()
     {
         BestRecords.Clear();
+        RefreshBestRecordsState("Đang tải Ranking...");
 
         try
         {
-            var matches =
-                await AppServices.MatchHistoryStore.GetAllMatchesAsync();
+            if (!await EnsureConnectedAsync())
+            {
+                RefreshBestRecordsState("Chưa kết nối được server.");
+                return;
+            }
 
-            var ranking = matches
-                .Where(match => !string.IsNullOrWhiteSpace(match.WinnerName))
-                .GroupBy(match => match.WinnerName!)
-                .Select(group => new BestRecordItem
-                {
-                    PlayerName = group.Key,
-                    Wins = group.Count()
-                })
-                .OrderByDescending(item => item.Wins)
-                .ThenBy(item => item.PlayerName)
+            IReadOnlyList<PlayerRecordSummary> records =
+                await _gameClient.GetTopRecordsAsync(CancellationToken.None);
+
+            var ranking = records
+                .Where(record => !string.IsNullOrWhiteSpace(record.PlayerName))
+                .OrderByDescending(record => record.WinRate)
+                .ThenByDescending(record => record.Wins)
+                .ThenBy(record => record.PlayerName)
                 .Take(10)
                 .ToList();
 
             int rank = 1;
 
-            foreach (var item in ranking)
+            foreach (var record in ranking)
             {
-                item.Rank = rank++;
-                BestRecords.Add(item);
+                BestRecords.Add(new BestRecordItem
+                {
+                    Rank = rank++,
+                    PlayerName = record.PlayerName,
+                    Wins = record.Wins,
+                    Losses = record.Losses,
+                    Draws = record.Draws
+                });
             }
+
+            RefreshBestRecordsState(BestRecords.Count == 0
+                ? "Chưa có người chơi nào trong Ranking."
+                : $"Đã tải {BestRecords.Count} người chơi.");
         }
-        catch
+        catch (Exception ex)
         {
-            
+            RefreshBestRecordsState($"Không thể tải Ranking: {ex.Message}");
         }
     }
 
@@ -117,6 +132,7 @@ public sealed class MainMenuViewModel : INotifyPropertyChanged
             if (SetProperty(ref _isAuthenticated, value))
             {
                 OnPropertyChanged(nameof(GreetingText));
+                OnPropertyChanged(nameof(CanUseGameActions));
             }
         }
     }
@@ -124,6 +140,34 @@ public sealed class MainMenuViewModel : INotifyPropertyChanged
     public string GreetingText => IsAuthenticated
         ? $"Xin chào, {PlayerName}"
         : "Vui lòng đăng nhập để chơi";
+
+    public bool IsActionBusy
+    {
+        get => _isActionBusy;
+        private set
+        {
+            if (SetProperty(ref _isActionBusy, value))
+            {
+                OnPropertyChanged(nameof(CanUseGameActions));
+            }
+        }
+    }
+
+    public bool CanUseGameActions => IsAuthenticated && !IsActionBusy;
+
+    public string ActionStatus
+    {
+        get => _actionStatus;
+        private set => SetProperty(ref _actionStatus, value);
+    }
+
+    public string RankingStatus
+    {
+        get => _rankingStatus;
+        private set => SetProperty(ref _rankingStatus, value);
+    }
+
+    public bool HasBestRecords => BestRecords.Count > 0;
 
     
     private string _serverHost = "127.0.0.1";
@@ -232,6 +276,9 @@ public sealed class MainMenuViewModel : INotifyPropertyChanged
 
         try
         {
+            IsActionBusy = true;
+            ActionStatus = "Đang tạo tài khoản...";
+
             if (!await EnsureConnectedAsync())
             {
                 return false;
@@ -252,6 +299,11 @@ public sealed class MainMenuViewModel : INotifyPropertyChanged
             AuthStatus = ex.Message;
             return false;
         }
+        finally
+        {
+            IsActionBusy = false;
+            ActionStatus = string.Empty;
+        }
     }
 
     public async Task<bool> LoginAsync()
@@ -265,6 +317,9 @@ public sealed class MainMenuViewModel : INotifyPropertyChanged
 
         try
         {
+            IsActionBusy = true;
+            ActionStatus = "Đang đăng nhập...";
+
             if (!await EnsureConnectedAsync())
             {
                 return false;
@@ -283,6 +338,11 @@ public sealed class MainMenuViewModel : INotifyPropertyChanged
         {
             AuthStatus = ex.Message;
             return false;
+        }
+        finally
+        {
+            IsActionBusy = false;
+            ActionStatus = string.Empty;
         }
     }
 
@@ -306,6 +366,9 @@ public sealed class MainMenuViewModel : INotifyPropertyChanged
 
         try
         {
+            IsActionBusy = true;
+            ActionStatus = "Đang tạo phòng...";
+
             if (!await EnsureConnectedAsync())
             {
                 return false;
@@ -323,6 +386,11 @@ public sealed class MainMenuViewModel : INotifyPropertyChanged
         {
             ConnectionStatus = ex.Message;
             return false;
+        }
+        finally
+        {
+            IsActionBusy = false;
+            ActionStatus = string.Empty;
         }
     }
 
@@ -345,6 +413,9 @@ public sealed class MainMenuViewModel : INotifyPropertyChanged
 
         try
         {
+            IsActionBusy = true;
+            ActionStatus = "Đang vào phòng...";
+
             if (!await EnsureConnectedAsync())
             {
                 return false;
@@ -364,6 +435,11 @@ public sealed class MainMenuViewModel : INotifyPropertyChanged
             ConnectionStatus = ex.Message;
             return false;
         }
+        finally
+        {
+            IsActionBusy = false;
+            ActionStatus = string.Empty;
+        }
     }
 
     public async Task<bool> QuickMatchAsync()
@@ -376,6 +452,9 @@ public sealed class MainMenuViewModel : INotifyPropertyChanged
 
         try
         {
+            IsActionBusy = true;
+            ActionStatus = "Đang tìm đối thủ...";
+
             if (!await EnsureConnectedAsync())
             {
                 return false;
@@ -393,6 +472,11 @@ public sealed class MainMenuViewModel : INotifyPropertyChanged
             ConnectionStatus = ex.Message;
             return false;
         }
+        finally
+        {
+            IsActionBusy = false;
+            ActionStatus = string.Empty;
+        }
     }
 
     private void ApplyAuthSession(AuthSession session)
@@ -404,6 +488,12 @@ public sealed class MainMenuViewModel : INotifyPropertyChanged
         IsAuthenticated = true;
         ConnectionStatus = $"Đã đăng nhập: {session.DisplayName}";
         OnPropertyChanged(nameof(GreetingText));
+    }
+
+    private void RefreshBestRecordsState(string status)
+    {
+        RankingStatus = status;
+        OnPropertyChanged(nameof(HasBestRecords));
     }
 
     private string? ValidateRegisterFields()

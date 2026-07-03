@@ -11,33 +11,52 @@
     <Page.Resources>
         <local:BoolToVisibilityConverter x:Key="BoolToVisibilityConverter"/>
         <local:InverseBoolToVisibilityConverter x:Key="InverseBoolToVisibilityConverter"/>
+        <Style x:Key="MaterialIconTextStyle"
+               TargetType="TextBlock">
+            <Setter Property="FontFamily" Value="ms-appx:///Assets/Fonts/MaterialSymbolsRounded.ttf#Material Symbols Rounded"/>
+            <Setter Property="FontSize" Value="20"/>
+            <Setter Property="FontWeight" Value="Normal"/>
+            <Setter Property="VerticalAlignment" Value="Center"/>
+            <Setter Property="HorizontalAlignment" Value="Center"/>
+        </Style>
     </Page.Resources>
 
     <Grid Background="{ThemeResource ApplicationPageBackgroundThemeBrush}"
-          Padding="32">
-
+          Padding="24">
         <ScrollViewer VerticalScrollBarVisibility="Auto">
-
-            <StackPanel Width="620"
+            <StackPanel MaxWidth="680"
                         HorizontalAlignment="Center"
-                        VerticalAlignment="Top"
                         Spacing="18">
-
                 <TextBlock Text="CaroNet"
                            HorizontalAlignment="Center"
-                           FontSize="56"
-                           FontWeight="Bold"
+                           FontSize="52"
+                           FontWeight="SemiBold"
                            Foreground="{ThemeResource TextFillColorPrimaryBrush}"/>
 
-                <Border Padding="18"
+                <Border Padding="20"
                         CornerRadius="8"
                         BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}"
                         BorderThickness="1"
                         Background="{ThemeResource CardBackgroundFillColorDefaultBrush}">
-                    <StackPanel Spacing="12">
-                        <TextBlock Text="Tài khoản"
-                                   FontSize="22"
-                                   FontWeight="SemiBold"/>
+                    <StackPanel Spacing="14">
+                        <Grid ColumnSpacing="12">
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="*"/>
+                                <ColumnDefinition Width="Auto"/>
+                            </Grid.ColumnDefinitions>
+
+                            <TextBlock Text="Tài khoản"
+                                       FontSize="22"
+                                       FontWeight="SemiBold"
+                                       VerticalAlignment="Center"/>
+
+                            <TextBlock Grid.Column="1"
+                                       Text="Đã đăng nhập"
+                                       Foreground="{ThemeResource AccentFillColorDefaultBrush}"
+                                       FontWeight="SemiBold"
+                                       VerticalAlignment="Center"
+                                       Visibility="{Binding IsAuthenticated, Converter={StaticResource BoolToVisibilityConverter}}"/>
+                        </Grid>
 
                         <TextBox x:Name="UsernameTextBox"
                                  Header="Tên đăng nhập"
@@ -56,9 +75,19 @@
                         <Button x:Name="LoginButton"
                                 Height="48"
                                 HorizontalAlignment="Stretch"
-                                Content="Đăng nhập"
                                 Click="LoginButton_Click"
-                                Visibility="{Binding IsAuthenticated, Converter={StaticResource InverseBoolToVisibilityConverter}}"/>
+                                Background="{ThemeResource AccentFillColorDefaultBrush}"
+                                Foreground="White"
+                                Visibility="{Binding IsAuthenticated, Converter={StaticResource InverseBoolToVisibilityConverter}}">
+                            <StackPanel Orientation="Horizontal"
+                                        HorizontalAlignment="Center"
+                                        Spacing="8">
+                                <TextBlock Text="login"
+                                           Style="{StaticResource MaterialIconTextStyle}"/>
+                                <TextBlock Text="Đăng nhập"
+                                           VerticalAlignment="Center"/>
+                            </StackPanel>
+                        </Button>
 
                         <HyperlinkButton x:Name="CreateAccountLink"
                                          HorizontalAlignment="Center"
@@ -66,128 +95,146 @@
                                          Click="CreateAccountLink_Click"
                                          Visibility="{Binding IsAuthenticated, Converter={StaticResource InverseBoolToVisibilityConverter}}"/>
 
-                        <TextBlock Text="{Binding GreetingText}"
-                                   FontSize="16"
-                                   FontWeight="SemiBold"
-                                   Visibility="{Binding IsAuthenticated, Converter={StaticResource BoolToVisibilityConverter}}"/>
+                        <StackPanel Spacing="4"
+                                    Visibility="{Binding IsAuthenticated, Converter={StaticResource BoolToVisibilityConverter}}">
+                            <TextBlock Text="{Binding GreetingText}"
+                                       FontSize="18"
+                                       FontWeight="SemiBold"/>
+                            <TextBlock Text="{Binding ConnectionStatus}"
+                                       TextWrapping="Wrap"
+                                       Foreground="{ThemeResource TextFillColorSecondaryBrush}"/>
+                        </StackPanel>
 
                         <TextBlock Text="{Binding AuthStatus}"
                                    TextWrapping="Wrap"
                                    Foreground="{ThemeResource TextFillColorSecondaryBrush}"/>
-                    </StackPanel>
-                </Border>
 
-                <Border Padding="18"
-                        CornerRadius="8"
-                        BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}"
-                        BorderThickness="1"
-                        Background="{ThemeResource CardBackgroundFillColorDefaultBrush}">
-                    <StackPanel Spacing="12">
-                        <TextBlock Text="Kết nối server"
-                                   FontSize="22"
-                                   FontWeight="SemiBold"/>
-
-                        <Grid ColumnSpacing="12">
-                            <Grid.ColumnDefinitions>
-                                <ColumnDefinition Width="*"/>
-                                <ColumnDefinition Width="160"/>
-                            </Grid.ColumnDefinitions>
-
-                            <TextBox x:Name="ServerHostTextBox"
-                                     Grid.Column="0"
-                                     Header="Server Host"
-                                     PlaceholderText="127.0.0.1"
-                                     Text="{Binding ServerHost, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
-                                     Height="64"/>
-
-                            <TextBox x:Name="ServerPortTextBox"
-                                     Grid.Column="1"
-                                     Header="Server Port"
-                                     PlaceholderText="5000"
-                                     Text="{Binding ServerPort, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
-                                     Height="64"/>
-                        </Grid>
-
-                        <TextBlock Text="{Binding ConnectionStatus}"
+                        <TextBlock Text="{Binding ActionStatus}"
                                    TextWrapping="Wrap"
-                                   Foreground="{ThemeResource TextFillColorSecondaryBrush}"/>
+                                   Foreground="{ThemeResource AccentFillColorDefaultBrush}"/>
                     </StackPanel>
                 </Border>
+
+                <Expander Header="Cài đặt server"
+                          IsExpanded="False">
+                    <Border Padding="18"
+                            CornerRadius="8"
+                            BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}"
+                            BorderThickness="1"
+                            Background="{ThemeResource CardBackgroundFillColorDefaultBrush}">
+                        <StackPanel Spacing="12">
+                            <Grid ColumnSpacing="12">
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="*"/>
+                                    <ColumnDefinition Width="160"/>
+                                </Grid.ColumnDefinitions>
+
+                                <TextBox x:Name="ServerHostTextBox"
+                                         Grid.Column="0"
+                                         Header="Server Host"
+                                         PlaceholderText="127.0.0.1"
+                                         Text="{Binding ServerHost, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
+                                         Height="64"/>
+
+                                <TextBox x:Name="ServerPortTextBox"
+                                         Grid.Column="1"
+                                         Header="Server Port"
+                                         PlaceholderText="5000"
+                                         Text="{Binding ServerPort, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
+                                         Height="64"/>
+                            </Grid>
+                        </StackPanel>
+                    </Border>
+                </Expander>
 
                 <StackPanel Spacing="12"
                             Visibility="{Binding IsAuthenticated, Converter={StaticResource BoolToVisibilityConverter}}">
                     <Button x:Name="QuickMatchButton"
-                            Height="52"
+                            MinHeight="72"
                             HorizontalAlignment="Stretch"
-                            Content="Chơi nhanh"
-                            Click="QuickMatchButton_Click"/>
+                            Click="QuickMatchButton_Click"
+                            IsEnabled="{Binding CanUseGameActions}"
+                            Background="{ThemeResource AccentFillColorDefaultBrush}"
+                            Foreground="White">
+                        <StackPanel Orientation="Horizontal"
+                                    HorizontalAlignment="Center"
+                                    Spacing="10">
+                            <TextBlock Text="bolt"
+                                       Style="{StaticResource MaterialIconTextStyle}"
+                                       FontSize="24"/>
+                            <StackPanel>
+                                <TextBlock Text="Chơi nhanh"
+                                           FontSize="18"
+                                           FontWeight="SemiBold"/>
+                                <TextBlock Text="Tự động ghép phòng với người đang chờ"
+                                           FontSize="12"
+                                           TextWrapping="Wrap"/>
+                            </StackPanel>
+                        </StackPanel>
+                    </Button>
 
-                    <Button x:Name="JoinRoomButton"
-                            Height="52"
-                            HorizontalAlignment="Stretch"
-                            Content="Vào phòng"
-                            Click="JoinRoomButton_Click"/>
+                    <Grid ColumnSpacing="12">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="*"/>
+                            <ColumnDefinition Width="*"/>
+                        </Grid.ColumnDefinitions>
 
-                    <Button x:Name="CreateRoomButton"
-                            Height="52"
-                            HorizontalAlignment="Stretch"
-                            Content="Tạo phòng"
-                            Click="CreateRoomButton_Click"/>
+                        <Button x:Name="JoinRoomButton"
+                                Grid.Column="0"
+                                MinHeight="52"
+                                HorizontalAlignment="Stretch"
+                                Click="JoinRoomButton_Click"
+                                IsEnabled="{Binding CanUseGameActions}">
+                            <StackPanel Orientation="Horizontal"
+                                        HorizontalAlignment="Center"
+                                        Spacing="8">
+                                <TextBlock Text="meeting_room"
+                                           Style="{StaticResource MaterialIconTextStyle}"/>
+                                <TextBlock Text="Vào phòng"
+                                           VerticalAlignment="Center"/>
+                            </StackPanel>
+                        </Button>
 
-                    <Button x:Name="HistoryButton"
-                            Height="52"
-                            HorizontalAlignment="Stretch"
-                            Content="Lịch sử trận đấu"
-                            Click="HistoryButton_Click"/>
+                        <Button x:Name="CreateRoomButton"
+                                Grid.Column="1"
+                                MinHeight="52"
+                                HorizontalAlignment="Stretch"
+                                Click="CreateRoomButton_Click"
+                                IsEnabled="{Binding CanUseGameActions}">
+                            <StackPanel Orientation="Horizontal"
+                                        HorizontalAlignment="Center"
+                                        Spacing="8">
+                                <TextBlock Text="add_circle"
+                                           Style="{StaticResource MaterialIconTextStyle}"/>
+                                <TextBlock Text="Tạo phòng"
+                                           VerticalAlignment="Center"/>
+                            </StackPanel>
+                        </Button>
+                    </Grid>
 
-                    <Button x:Name="BestRecordButton"
-                            Height="52"
-                            HorizontalAlignment="Stretch"
-                            Content="Ranking (Top 10)"
-                            Click="BestRecordButton_Click"/>
+                    <Grid ColumnSpacing="12">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="*"/>
+                            <ColumnDefinition Width="*"/>
+                        </Grid.ColumnDefinitions>
+
+                        <Button x:Name="HistoryButton"
+                                Grid.Column="0"
+                                MinHeight="48"
+                                HorizontalAlignment="Stretch"
+                                Content="Lịch sử trận đấu"
+                                Click="HistoryButton_Click"
+                                IsEnabled="{Binding CanUseGameActions}"/>
+
+                        <Button x:Name="BestRecordButton"
+                                Grid.Column="1"
+                                MinHeight="48"
+                                HorizontalAlignment="Stretch"
+                                Content="Ranking Top 10"
+                                Click="BestRecordButton_Click"
+                                IsEnabled="{Binding CanUseGameActions}"/>
+                    </Grid>
                 </StackPanel>
-
-                <ListView x:Name="BestRecordList"
-                          Visibility="Collapsed"
-                          ItemsSource="{Binding BestRecords}"
-                          SelectionMode="None"
-                          MaxHeight="300">
-
-                    <ListView.ItemTemplate>
-                        <DataTemplate>
-                            <Border Margin="0,4"
-                                    Padding="12"
-                                    BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}"
-                                    BorderThickness="1"
-                                    CornerRadius="8">
-                                <Grid>
-                                    <Grid.ColumnDefinitions>
-                                        <ColumnDefinition Width="50"/>
-                                        <ColumnDefinition Width="*"/>
-                                        <ColumnDefinition Width="90"/>
-                                    </Grid.ColumnDefinitions>
-
-                                    <TextBlock Grid.Column="0"
-                                               Text="{Binding Rank}"
-                                               FontWeight="Bold"
-                                               FontSize="18"/>
-
-                                    <TextBlock Grid.Column="1"
-                                               Text="{Binding PlayerName}"
-                                               FontSize="18"/>
-
-                                    <TextBlock Grid.Column="2"
-                                               HorizontalAlignment="Right"
-                                               FontWeight="SemiBold"
-                                               FontSize="18">
-                                        <Run Text="{Binding Wins}"/>
-                                        <Run Text=" Wins"/>
-                                    </TextBlock>
-                                </Grid>
-                            </Border>
-                        </DataTemplate>
-                    </ListView.ItemTemplate>
-                </ListView>
             </StackPanel>
         </ScrollViewer>
     </Grid>

@@ -398,6 +398,13 @@ public sealed class GameViewModelTests
             return Task.FromResult(matches);
         }
 
+        public Task<IReadOnlyList<PlayerRecordSummary>> GetTopRecordsAsync(
+            CancellationToken cancellationToken)
+        {
+            IReadOnlyList<PlayerRecordSummary> records = [];
+            return Task.FromResult(records);
+        }
+
         public Task MakeMoveAsync(
             BoardPosition position,
             CancellationToken cancellationToken) => Task.CompletedTask;
