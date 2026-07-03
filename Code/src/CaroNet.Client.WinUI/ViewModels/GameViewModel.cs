@@ -24,6 +24,7 @@ public sealed class GameViewModel : INotifyPropertyChanged
     private string _playerSymbol = "?";
     private string _roomId = string.Empty;
     private string _serverError = string.Empty;
+    private bool _isGameEnded;
     private string _chatInputText = string.Empty;
 
     public ObservableCollection<ChatMessageViewModel> ChatMessages { get; } = [];
@@ -128,13 +129,19 @@ public sealed class GameViewModel : INotifyPropertyChanged
     public string ConnectionStatus
     {
         get => _connectionStatus;
-        private set => SetProperty(ref _connectionStatus, value);
+        set => SetProperty(ref _connectionStatus, value);
     }
 
     public string ServerError
     {
         get => _serverError;
-        private set => SetProperty(ref _serverError, value);
+        set => SetProperty(ref _serverError, value);
+    }
+
+    public bool IsGameEnded
+    {
+        get => _isGameEnded;
+        private set => SetProperty(ref _isGameEnded, value);
     }
 
     public bool IsMyTurn =>
@@ -162,6 +169,11 @@ public sealed class GameViewModel : INotifyPropertyChanged
 
     public async Task MakeMoveAsync(int row, int column)
     {
+        if (IsGameEnded)
+        {
+            return;
+        }
+
         try
         {
             await _gameClient.MakeMoveAsync(new BoardPosition(row, column), CancellationToken.None);
@@ -200,8 +212,37 @@ public sealed class GameViewModel : INotifyPropertyChanged
         PlayerName = state.PlayerName;
         PlayerSymbol = state.PlayerSymbol;
         CurrentTurnSymbol = state.CurrentTurnSymbol;
-        ConnectionStatus = state.ConnectionStatus;
         ServerError = state.ServerError;
+
+        if (state.ConnectionStatus != null && (state.ConnectionStatus.StartsWith("Trận đấu mới") || state.ConnectionStatus.Contains("Đã vào phòng")))
+        {
+            ConnectionStatus = state.ConnectionStatus;
+            IsGameEnded = false;
+
+            foreach (var cell in BoardCells)
+            {
+                cell.Mark = string.Empty;
+                cell.IsWinningCell = false;
+                cell.IsInteractionEnabled = true;
+            }
+        }
+        else
+        {
+            if (_connectionStatus == "Đang chờ đối thủ xác nhận...")
+            {
+                if (!string.IsNullOrEmpty(state.ConnectionStatus) &&
+                   (state.ConnectionStatus.StartsWith("Trận đấu mới") || state.ConnectionStatus == "Đối thủ muốn chơi lại!"))
+                {
+                    ConnectionStatus = state.ConnectionStatus;
+                }
+            }
+            else
+            {
+                ConnectionStatus = state.ConnectionStatus ?? ConnectionStatus;
+            }
+
+            IsGameEnded = (state.ConnectionStatus == "Trò chơi kết thúc" || ServerError == "Ván đấu đã kết thúc.");
+        }
 
         foreach (var cellState in state.Cells)
         {
@@ -209,6 +250,30 @@ public sealed class GameViewModel : INotifyPropertyChanged
             if (index >= 0 && index < BoardCells.Count)
             {
                 BoardCells[index].Mark = cellState.Mark;
+            }
+        }
+
+        if (IsGameEnded || _connectionStatus == "Đang chờ đối thủ xác nhận...")
+        {
+            foreach (var cell in BoardCells)
+            {
+                cell.IsInteractionEnabled = false;
+            }
+
+            if (_gameClient is SocketGameClientService socketService)
+            {
+                var targetCells = socketService.WinningCells;
+                if (targetCells != null && targetCells.Count > 0)
+                {
+                    foreach (var target in targetCells)
+                    {
+                        int index = target.Row * BoardSize + target.Col;
+                        if (index >= 0 && index < BoardCells.Count)
+                        {
+                            BoardCells[index].IsWinningCell = true;
+                        }
+                    }
+                }
             }
         }
 
@@ -220,11 +285,7 @@ public sealed class GameViewModel : INotifyPropertyChanged
 
     private void SetProperty<T>(ref T field, T value, [CallerMemberName] string? propertyName = null)
     {
-        if (EqualityComparer<T>.Default.Equals(field, value))
-        {
-            return;
-        }
-
+        if (EqualityComparer<T>.Default.Equals(field, value)) return;
         field = value;
         PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(propertyName));
     }
@@ -244,6 +305,8 @@ public sealed class GameViewModel : INotifyPropertyChanged
 public sealed class BoardCellViewModel : INotifyPropertyChanged
 {
     private string _mark = string.Empty;
+    private bool _isWinningCell;
+    private bool _isInteractionEnabled = true;
 
     public BoardCellViewModel(int row, int column)
     {
@@ -260,13 +323,31 @@ public sealed class BoardCellViewModel : INotifyPropertyChanged
         get => _mark;
         set
         {
-            if (_mark == value)
-            {
-                return;
-            }
-
+            if (_mark == value) return;
             _mark = value;
             PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(Mark)));
+        }
+    }
+
+    public bool IsWinningCell
+    {
+        get => _isWinningCell;
+        set
+        {
+            if (_isWinningCell == value) return;
+            _isWinningCell = value;
+            PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(IsWinningCell)));
+        }
+    }
+
+    public bool IsInteractionEnabled
+    {
+        get => _isInteractionEnabled;
+        set
+        {
+            if (_isInteractionEnabled == value) return;
+            _isInteractionEnabled = value;
+            PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(IsInteractionEnabled)));
         }
     }
 }

@@ -1,4 +1,9 @@
+using System;
+using System.Collections.Generic;
+using System.Linq;
 using System.Text.Json;
+using System.Threading;
+using System.Threading.Tasks;
 using CaroNet.Server.Host.GameRooms;
 using CaroNet.Server.Host.Networking;
 using CaroNet.Shared.Game;
@@ -15,7 +20,6 @@ public sealed class GameMessageDispatcher : IMessageDispatcher
     private readonly RoomManager _roomManager;
     private readonly ClientSessionRegistry _registry;
     private readonly IMatchHistoryStore? _matchHistoryStore;
-
 
     private readonly System.Collections.Concurrent.ConcurrentDictionary<Guid, string> _playerNames = new();
     private readonly System.Collections.Concurrent.ConcurrentDictionary<Guid, DateTime> _lastRequestTimes = new();
@@ -64,6 +68,9 @@ public sealed class GameMessageDispatcher : IMessageDispatcher
             case MessageType.MakeMove:
                 await HandleMakeMoveAsync(session, message, cancellationToken);
                 break;
+            case MessageType.Rematch:
+                await HandleRematchAsync(session, message, cancellationToken);
+                break;
 
             case MessageType.Chat:
                 await HandleChatAsync(session, message, cancellationToken);
@@ -84,6 +91,8 @@ public sealed class GameMessageDispatcher : IMessageDispatcher
 
         GameRoom? room = _roomManager.HandleDisconnect(sessionId);
         if (room is null) return;
+
+        room.StopRematchTimeout();
 
         // Báo cho người còn lại biết đối thủ đã thoát.
         foreach (var player in room.GetPlayers())
@@ -214,7 +223,6 @@ public sealed class GameMessageDispatcher : IMessageDispatcher
             return;
         }
 
-
         await session.SendAsync(new MessageEnvelope
         {
             Type = MessageType.RoomJoined,
@@ -296,13 +304,12 @@ public sealed class GameMessageDispatcher : IMessageDispatcher
             return;
         }
 
-
         await BroadcastGameStateAsync(room, cancellationToken);
-
 
         if (result.Status != GameStatus.Playing)
         {
-            await BroadcastGameEndedAsync(room, result.Status, cancellationToken);
+            // TRUYỀN THÊM row VÀ col VÀO ĐỂ KHÔNG BỊ LỖI THUỘC TÍNH
+            await BroadcastGameEndedAsync(room, result.Status, row, col, cancellationToken);
             await SaveMatchHistoryAsync(room, result.Status);
         }
     }
@@ -423,8 +430,9 @@ public sealed class GameMessageDispatcher : IMessageDispatcher
         }
     }
 
+    // THAY ĐỔI: Hàm nhận thêm tham số int lastRow, int lastCol để quét ô thắng trực tiếp
     private async Task BroadcastGameEndedAsync(
-        GameRoom room, GameStatus status, CancellationToken cancellationToken)
+         GameRoom room, GameStatus status, int lastRow, int lastCol, CancellationToken cancellationToken)
     {
         string? winnerId = status switch
         {
@@ -432,6 +440,17 @@ public sealed class GameMessageDispatcher : IMessageDispatcher
             GameStatus.OWon => room.PlayerO?.Id.ToString(),
             _ => null
         };
+
+        // SỬA TẠI ĐÂY: Tính toán và chuyển đổi danh sách tọa độ sang JSON Payload an toàn
+        IReadOnlyList<BoardPosition>? winningCells = null;
+
+        if (status == GameStatus.XWon || status == GameStatus.OWon)
+        {
+            var rawCells = CaroRuleEngine.GetWinningCells(room.GameState, lastRow, lastCol);
+            winningCells = rawCells
+                .Select(cell => new BoardPosition(cell.Row, cell.Col))
+                .ToList();
+        }
 
         var envelope = new MessageEnvelope
         {
@@ -441,7 +460,8 @@ public sealed class GameMessageDispatcher : IMessageDispatcher
             {
                 WinnerPlayerId = winnerId,
                 Reason = null,
-                Board = room.BuildBoardPayload()
+                Board = room.BuildBoardPayload(),
+                WinningCells = winningCells
             })
         };
 
@@ -453,12 +473,10 @@ public sealed class GameMessageDispatcher : IMessageDispatcher
             }
             catch (Exception ex)
             {
-                Console.WriteLine(
-                    $"[BROADCAST ERROR] {player.Id}: {ex.Message}");
+                Console.WriteLine($"[BROADCAST ERROR] {player.Id}: {ex.Message}");
             }
         }
     }
-
     private GameStatePayload BuildGameStatePayload(GameRoom room)
     {
         string currentTurnId = room.GameState.CurrentPlayer == PlayerSymbol.X
@@ -536,6 +554,69 @@ public sealed class GameMessageDispatcher : IMessageDispatcher
         catch (Exception ex)
         {
             Console.WriteLine($"[HISTORY ERROR] {ex.Message}");
+        }
+    }
+
+    private async Task HandleRematchAsync(
+        ClientSession session,
+        MessageEnvelope message,
+        CancellationToken cancellationToken)
+    {
+        GameRoom? room = _roomManager.GetRoomBySession(session.Id);
+        if (room is null)
+        {
+            await SendErrorAsync(session, "Bạn không ở trong phòng chơi nào.", cancellationToken);
+            return;
+        }
+
+        var (success, bothAccepted, players) = room.HandleRematchRequest(session.Id);
+        if (!success) return;
+
+        if (bothAccepted)
+        {
+            var gameState = BuildGameStatePayload(room);
+
+            foreach (var player in players)
+            {
+                try
+                {
+                    var symbol = room.GetPlayerSymbol(player.Id);
+                    await player.SendAsync(new MessageEnvelope
+                    {
+                        Type = MessageType.RematchAccepted,
+                        RoomId = room.RoomId,
+                        PlayerId = player.Id.ToString(),
+                        Payload = JsonSerializer.SerializeToElement(new
+                        {
+                            roomId = room.RoomId,
+                            yourSymbol = symbol?.ToString() ?? "",
+                            board = gameState.Board,
+                            currentTurnPlayerId = gameState.CurrentTurnPlayerId
+                        })
+                    }, cancellationToken);
+                }
+                catch (Exception ex)
+                {
+                    Console.WriteLine($"[REMATCH BROADCAST ERROR] {player.Id}: {ex.Message}");
+                }
+            }
+        }
+        else
+        {
+            var opponent = players.FirstOrDefault(p => p.Id != session.Id);
+            if (opponent is not null)
+            {
+                await opponent.SendAsync(new MessageEnvelope
+                {
+                    Type = MessageType.ChatReceived,
+                    RoomId = room.RoomId,
+                    Payload = JsonSerializer.SerializeToElement(new
+                    {
+                        sender = "Hệ thống",
+                        message = "Đối thủ muốn chơi lại! Bấm Chơi lại để bắt đầu trận mới."
+                    })
+                }, cancellationToken);
+            }
         }
     }
 }

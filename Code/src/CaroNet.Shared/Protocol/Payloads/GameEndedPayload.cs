@@ -1,3 +1,5 @@
+using CaroNet.Shared.Game;
+
 namespace CaroNet.Shared.Protocol.Payloads;
 
 public sealed class GameEndedPayload
@@ -7,4 +9,6 @@ public sealed class GameEndedPayload
     public string? Reason { get; init; }
 
     public string[][] Board { get; init; } = [];
+
+    public IReadOnlyList<BoardPosition>? WinningCells { get; init; }
 }
