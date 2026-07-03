@@ -253,14 +253,13 @@ public sealed class GameViewModel : INotifyPropertyChanged
         }
     }
 
-<<<<<<< HEAD
-=======
+
     private void GameClient_GameStateUpdated(object? sender, GameViewState state)
     {
         SafeExecuteOnUI(() => ApplyState(state));
     }
 
->>>>>>> 07eb0edcf3bb2867b413bc3ed4095f9f32b4fb2a
+
     private void ApplyState(GameViewState state)
     {
         BoardPosition? detectedLastMove = null;
@@ -360,14 +359,14 @@ public sealed class GameViewModel : INotifyPropertyChanged
 
         PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(IsChatInputEnabled)));
         PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(IsSendButtonEnabled)));
-<<<<<<< HEAD
+
         OnPropertyChanged(nameof(IsMyTurn));
         OnPropertyChanged(nameof(TurnMessage));
-=======
+
         PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(IsMyTurn)));
         PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(TurnMessage)));
         PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(LastMovePosition)));
->>>>>>> 07eb0edcf3bb2867b413bc3ed4095f9f32b4fb2a
+
     }
 
     private void SetProperty<T>(ref T field, T value, [CallerMemberName] string? propertyName = null)
@@ -387,11 +386,11 @@ public sealed class GameViewModel : INotifyPropertyChanged
         ChatMessages.Add(new ChatMessageViewModel(payload.SenderName, payload.Message, payload.Timestamp));
     }
 
-<<<<<<< HEAD
+
     private void OnPropertyChanged([CallerMemberName] string? propertyName = null)
     {
         PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(propertyName));
-=======
+
 public sealed class BoardCellViewModel : INotifyPropertyChanged
 {
     private string _mark = string.Empty;
@@ -418,7 +417,7 @@ public sealed class BoardCellViewModel : INotifyPropertyChanged
             _mark = value;
             PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(Mark)));
         }
->>>>>>> 07eb0edcf3bb2867b413bc3ed4095f9f32b4fb2a
+
     }
 
     public bool IsWinningCell
