@@ -1,10 +1,11 @@
-using System.Text.Json;
 using CaroNet.Server.Host.GameRooms;
 using CaroNet.Server.Host.Networking;
 using CaroNet.Shared.Game;
 using CaroNet.Shared.Protocol;
 using CaroNet.Shared.Protocol.Payloads;
 using CaroNet.Storage.Matches;
+using CaroNet.Storage.Statistics;
+using System.Text.Json;
 
 
 namespace CaroNet.Server.Host.Services;
@@ -15,7 +16,7 @@ public sealed class GameMessageDispatcher : IMessageDispatcher
     private readonly RoomManager _roomManager;
     private readonly ClientSessionRegistry _registry;
     private readonly IMatchHistoryStore? _matchHistoryStore;
-
+    private readonly IPlayerRecordStore? _playerRecordStore;
 
     private readonly System.Collections.Concurrent.ConcurrentDictionary<Guid, string> _playerNames = new();
     private readonly System.Collections.Concurrent.ConcurrentDictionary<Guid, DateTime> _lastRequestTimes = new();
@@ -23,11 +24,13 @@ public sealed class GameMessageDispatcher : IMessageDispatcher
     public GameMessageDispatcher(
         RoomManager roomManager,
         ClientSessionRegistry registry,
-        IMatchHistoryStore? matchHistoryStore = null)
+        IMatchHistoryStore? matchHistoryStore = null,
+        IPlayerRecordStore? playerRecordStore = null) // Thêm tham số này
     {
         _roomManager = roomManager;
         _registry = registry;
         _matchHistoryStore = matchHistoryStore;
+        _playerRecordStore = playerRecordStore; // Thêm dòng này
     }
 
     public async Task DispatchAsync(
@@ -490,40 +493,88 @@ public sealed class GameMessageDispatcher : IMessageDispatcher
 
     private async Task SaveMatchHistoryAsync(GameRoom room, GameStatus status)
     {
-        if (_matchHistoryStore is null) return;
+        // Lấy tên từ Session ID nếu có, nếu không thì lấy từ room (fallback)
+        string playerXName = room.PlayerX != null && _playerNames.TryGetValue(room.PlayerX.Id, out var nameX) ? nameX : (room.PlayerXName ?? "Player X");
+        string playerOName = room.PlayerO != null && _playerNames.TryGetValue(room.PlayerO.Id, out var nameO) ? nameO : (room.PlayerOName ?? "Player O");
 
-        try
+        // 1. Lưu lịch sử trận đấu (Chỉ chạy khi _matchHistoryStore khác null)
+        if (_matchHistoryStore is not null)
         {
-            string? winnerName = status switch
+            try
             {
-                GameStatus.XWon => room.PlayerXName,
-                GameStatus.OWon => room.PlayerOName,
-                _ => null
-            };
+                string? winnerName = status switch
+                {
+                    GameStatus.XWon => playerXName,
+                    GameStatus.OWon => playerOName,
+                    _ => null
+                };
 
-            var moves = room.GetMoveHistory();
-            var now = DateTime.UtcNow;
+                var moves = room.GetMoveHistory();
+                var now = DateTime.UtcNow;
 
-            var matchMoves = moves.Select((m, i) =>
-                new MatchMoveRecord(i + 1, m.PlayerName, m.Row, m.Col, m.Timestamp))
-                .ToList();
+                var matchMoves = moves.Select((m, i) =>
+                    new MatchMoveRecord(i + 1, m.PlayerName, m.Row, m.Col, m.Timestamp))
+                    .ToList();
 
-            var record = new MatchRecord(
-                Guid.NewGuid(),
-                room.RoomId,
-                room.PlayerXName ?? "Player X",
-                room.PlayerOName ?? "Player O",
-                winnerName,
-                room.StartedAtUtc,
-                now,
-                matchMoves);
+                var record = new MatchRecord(
+                    Guid.NewGuid(),
+                    room.RoomId,
+                    playerXName,
+                    playerOName,
+                    winnerName,
+                    room.StartedAtUtc,
+                    now,
+                    matchMoves);
 
-            await _matchHistoryStore.SaveMatchAsync(record);
-            Console.WriteLine($"[HISTORY] Saved match {record.MatchId} in room {room.RoomId}");
+                await _matchHistoryStore.SaveMatchAsync(record);
+                Console.WriteLine($"[HISTORY] Saved match {record.MatchId} for {playerXName} vs {playerOName}");
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine($"[HISTORY ERROR] {ex.Message}");
+            }
         }
-        catch (Exception ex)
+
+        // 2. Tự động cập nhật thống kê người chơi (Issue #63)
+        if (_playerRecordStore is not null)
         {
-            Console.WriteLine($"[HISTORY ERROR] {ex.Message}");
+            try
+            {
+                bool isDraw = status == GameStatus.Draw;
+                await UpdatePlayerStatsAsync(playerXName, status == GameStatus.XWon, isDraw);
+                await UpdatePlayerStatsAsync(playerOName, status == GameStatus.OWon, isDraw);
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine($"[STATISTICS ERROR] {ex.Message}");
+            }
         }
+    }
+        private async Task UpdatePlayerStatsAsync(string playerName, bool isWinner, bool isDraw)
+        {
+        if (_playerRecordStore == null) return;
+
+        var record = await _playerRecordStore.GetAsync(playerName);
+
+        int wins = record?.Wins ?? 0;
+        int losses = record?.Losses ?? 0;
+        int draws = record?.Draws ?? 0;
+
+        if (isDraw)
+        {
+            draws++;
+        }
+        else if (isWinner)
+        {
+            wins++;
+        }
+        else
+        {
+            losses++;
+        }
+
+        var updatedRecord = new PlayerRecord(playerName, wins, losses, draws);
+        await _playerRecordStore.SaveAsync(updatedRecord);
+        Console.WriteLine($"[STATISTICS] Updated stats for {playerName}: {wins}W - {losses}L - {draws}D");
     }
 }
