@@ -23,11 +23,14 @@ public sealed class SocketGameClientService : IGameClientService, IAsyncDisposab
     private TaskCompletionSource<GameViewState>? _roomJoinedCompletion;
     private string _connectionStatus = "Chưa kết nối server";
     private string _currentTurnSymbol = "X";
+    private string _opponentName = "Đối thủ";
     private string _playerId = string.Empty;
     private string _playerName = "Player";
     private string _playerSymbol = "?";
     private string _roomId = string.Empty;
     private string _serverError = string.Empty;
+    private int _myScore;
+    private int _opponentScore;
     private string[,] _board = InitEmptyBoard();
 
     // Định nghĩa sự kiện nhận Chat từ Socket mạng thật gửi về
@@ -295,6 +298,9 @@ public sealed class SocketGameClientService : IGameClientService, IAsyncDisposab
                 GetString(message.Payload, "yourSymbol"),
                 GetString(message.Payload, "symbol"),
                 _playerSymbol);
+            _opponentName = FirstNonEmpty(
+                GetString(message.Payload, "opponentName"),
+                _opponentName);
             _connectionStatus = string.IsNullOrWhiteSpace(_roomId)
                 ? "Đã vào phòng"
                 : $"Đã vào phòng {_roomId}";
@@ -349,6 +355,8 @@ public sealed class SocketGameClientService : IGameClientService, IAsyncDisposab
             {
                 _board = board!;
             }
+
+            UpdateScore(GetString(message.Payload, "winnerPlayerId"));
 
             string reason = GetString(message.Payload, "reason");
 
@@ -433,7 +441,10 @@ public sealed class SocketGameClientService : IGameClientService, IAsyncDisposab
                 _currentTurnSymbol,
                 _connectionStatus,
                 _serverError,
-                BuildCells());
+                BuildCells(),
+                _opponentName,
+                _myScore,
+                _opponentScore);
         }
     }
 
@@ -581,6 +592,9 @@ public sealed class SocketGameClientService : IGameClientService, IAsyncDisposab
                 GetString(message.Payload, "yourSymbol"),
                 GetString(message.Payload, "symbol"),
                 _playerSymbol);
+            _opponentName = FirstNonEmpty(
+                GetString(message.Payload, "opponentName"),
+                _opponentName);
 
             _currentTurnSymbol = ResolveCurrentTurnSymbol(message.Payload);
             _board = InitEmptyBoard();
@@ -637,5 +651,22 @@ public sealed class SocketGameClientService : IGameClientService, IAsyncDisposab
         }
 
         return -1;
+    }
+
+    private void UpdateScore(string winnerPlayerId)
+    {
+        if (string.IsNullOrWhiteSpace(winnerPlayerId))
+        {
+            return;
+        }
+
+        if (winnerPlayerId == _playerId)
+        {
+            _myScore++;
+        }
+        else
+        {
+            _opponentScore++;
+        }
     }
 }

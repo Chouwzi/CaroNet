@@ -94,6 +94,60 @@ public sealed class SocketGameClientServiceTests
     }
 
     [Fact]
+    public async Task GameStarted_PublishesOpponentName_AndGameEndedUpdatesScore()
+    {
+        var connection = new FakeClientConnection();
+        var service = new SocketGameClientService(connection);
+        var states = new List<GameViewState>();
+
+        service.GameStateUpdated += (_, state) => states.Add(state);
+
+        await service.ConnectAsync(
+            new ConnectionRequest("Alice", "127.0.0.1", 5000),
+            CancellationToken.None);
+
+        connection.RaiseMessage(new MessageEnvelope
+        {
+            Type = MessageType.GameStarted,
+            PlayerId = "player-x",
+            Payload = JsonSerializer.SerializeToElement(new
+            {
+                roomId = "ROOM-01",
+                yourSymbol = "X",
+                opponentName = "Bob",
+                currentTurnPlayerId = "player-x",
+                board = CreateEmptyBoard()
+            })
+        });
+
+        connection.RaiseMessage(new MessageEnvelope
+        {
+            Type = MessageType.GameEnded,
+            Payload = JsonSerializer.SerializeToElement(new
+            {
+                winnerPlayerId = "player-x",
+                board = CreateEmptyBoard()
+            })
+        });
+
+        connection.RaiseMessage(new MessageEnvelope
+        {
+            Type = MessageType.GameEnded,
+            Payload = JsonSerializer.SerializeToElement(new
+            {
+                winnerPlayerId = "player-o",
+                board = CreateEmptyBoard()
+            })
+        });
+
+        GameViewState state = states.Last();
+
+        Assert.Equal("Bob", state.OpponentName);
+        Assert.Equal(1, state.MyScore);
+        Assert.Equal(1, state.OpponentScore);
+    }
+
+    [Fact]
     public async Task MakeMoveAsync_sends_request_without_mutating_board_locally()
     {
         var connection = new FakeClientConnection();

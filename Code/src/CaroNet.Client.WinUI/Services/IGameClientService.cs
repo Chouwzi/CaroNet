@@ -34,6 +34,9 @@ public sealed record GameViewState(
     string CurrentTurnSymbol,
     string ConnectionStatus,
     string ServerError,
-    IReadOnlyList<CellViewState> Cells);
+    IReadOnlyList<CellViewState> Cells,
+    string OpponentName = "Đối thủ",
+    int MyScore = 0,
+    int OpponentScore = 0);
 
 public sealed record CellViewState(int Row, int Column, string Mark);
