@@ -18,7 +18,11 @@ public sealed class DatabaseInitializer
         connection.Open();
 
         using var pragmaCommand = connection.CreateCommand();
-        pragmaCommand.CommandText = "PRAGMA foreign_keys = ON;";
+        pragmaCommand.CommandText =
+            """
+            PRAGMA foreign_keys = ON;
+            PRAGMA journal_mode = WAL;
+            """;
         pragmaCommand.ExecuteNonQuery();
 
         CreateMatchesTable(connection);

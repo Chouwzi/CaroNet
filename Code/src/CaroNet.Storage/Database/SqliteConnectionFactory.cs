@@ -22,7 +22,7 @@ internal static class SqliteConnectionFactory
         var builder = new SqliteConnectionStringBuilder
         {
             DataSource = fullPath,
-            DefaultTimeout = 5 // Giữ lại dòng này để cấu hình Busy Timeout thành công
+            DefaultTimeout = 5
         };
 
         return builder.ToString();
