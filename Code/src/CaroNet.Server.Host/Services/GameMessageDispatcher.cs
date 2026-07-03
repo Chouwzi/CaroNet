@@ -85,35 +85,37 @@ public sealed class GameMessageDispatcher : IMessageDispatcher
         GameRoom? room = _roomManager.HandleDisconnect(sessionId);
         if (room is null) return;
 
-        // Nếu vẫn còn người chơi trong phòng thì người đó thắng
-    foreach (var player in room.GetPlayers())
-    {
-    try
-    {
-        Console.WriteLine(
-        $"[DISCONNECT] Sending GameEnded to {player.Id}");
-        await player.SendAsync(
-            new MessageEnvelope
+        // Báo cho người còn lại biết đối thủ đã thoát.
+        foreach (var player in room.GetPlayers())
+        {
+            try
             {
-                Type = MessageType.GameEnded,
-                RoomId = room.RoomId,
-                Payload = JsonSerializer.SerializeToElement(new GameEndedPayload
-                {
-                 WinnerPlayerId = player.Id.ToString(),
-                 Reason = "opponent_disconnected",
-                 Board = room.BuildBoardPayload()
-                 })
-            },
-            CancellationToken.None);
-             Console.WriteLine(
-            $"[DISCONNECT] GameEnded sent to {player.Id}");
-    }
-    catch (Exception ex)
-    {
-        Console.WriteLine(
-            $"[DISCONNECT] Failed to notify player {player.Id}: {ex.Message}");
-    }
-    }
+                Console.WriteLine(
+                    $"[DISCONNECT] Sending GameEnded to {player.Id}");
+
+                await player.SendAsync(
+                    new MessageEnvelope
+                    {
+                        Type = MessageType.GameEnded,
+                        RoomId = room.RoomId,
+                        Payload = JsonSerializer.SerializeToElement(new GameEndedPayload
+                        {
+                            WinnerPlayerId = player.Id.ToString(),
+                            Reason = "opponent_disconnected",
+                            Board = room.BuildBoardPayload()
+                        })
+                    },
+                    CancellationToken.None);
+
+                Console.WriteLine(
+                    $"[DISCONNECT] GameEnded sent to {player.Id}");
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine(
+                    $"[DISCONNECT] Failed to notify player {player.Id}: {ex.Message}");
+            }
+        }
     }
 
     private async Task HandleHelloAsync(
@@ -435,13 +437,12 @@ public sealed class GameMessageDispatcher : IMessageDispatcher
         {
             Type = MessageType.GameEnded,
             RoomId = room.RoomId,
-            Payload = JsonSerializer.SerializeToElement(
-             new GameEndedPayload
+            Payload = JsonSerializer.SerializeToElement(new GameEndedPayload
             {
-            WinnerPlayerId = winnerId,
-            Reason = null,
-             Board = room.BuildBoardPayload()
-             })
+                WinnerPlayerId = winnerId,
+                Reason = null,
+                Board = room.BuildBoardPayload()
+            })
         };
 
         foreach (var player in room.GetPlayers())

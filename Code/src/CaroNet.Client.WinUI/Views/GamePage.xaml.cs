@@ -5,7 +5,7 @@ using Microsoft.UI.Xaml.Controls;
 using Microsoft.UI.Xaml.Data;
 using System;
 using System.Threading.Tasks;
-using Microsoft.UI.Xaml.Media; // Thêm namespace này ở đầu file GamePage.xaml.cs
+using Microsoft.UI.Xaml.Media;
 
 namespace CaroNet.Client.WinUI.Views;
 
@@ -27,50 +27,50 @@ public sealed partial class GamePage : Page
     private readonly GameViewModel _viewModel;
 
     public GamePage()
-{
-    this.InitializeComponent();
-
-    _viewModel = new GameViewModel(AppServices.GameClient);
-    this.DataContext = _viewModel;
-
-    _viewModel.SetDispatcher(action => DispatcherQueue.TryEnqueue(
-        Microsoft.UI.Dispatching.DispatcherQueuePriority.Normal,
-        () => action()));
-
-    _viewModel.ChatMessages.CollectionChanged += ChatMessages_CollectionChanged;
-    _viewModel.PropertyChanged += ViewModel_PropertyChanged;
-
-    EmptyStateTextBlock.Visibility = Visibility.Visible;
-
-    BuildBoard();
-}
-        private async void ViewModel_PropertyChanged(
-    object? sender,
-    System.ComponentModel.PropertyChangedEventArgs e)
-{
-    if (e.PropertyName != nameof(GameViewModel.ServerError))
     {
-        return;
+        this.InitializeComponent();
+
+        _viewModel = new GameViewModel(AppServices.GameClient);
+        this.DataContext = _viewModel;
+
+        _viewModel.SetDispatcher(action => DispatcherQueue.TryEnqueue(
+            Microsoft.UI.Dispatching.DispatcherQueuePriority.Normal,
+            () => action()));
+
+        _viewModel.ChatMessages.CollectionChanged += ChatMessages_CollectionChanged;
+        _viewModel.PropertyChanged += ViewModel_PropertyChanged;
+
+        EmptyStateTextBlock.Visibility = Visibility.Visible;
+
+        BuildBoard();
     }
 
-    if (_viewModel.ServerError != "Đối thủ đã ngắt kết nối. Bạn thắng!")
+    private async void ViewModel_PropertyChanged(
+        object? sender,
+        System.ComponentModel.PropertyChangedEventArgs e)
     {
-        return;
+        if (e.PropertyName != nameof(GameViewModel.ServerError))
+        {
+            return;
+        }
+
+        if (_viewModel.ServerError != "Đối thủ đã ngắt kết nối. Bạn thắng!")
+        {
+            return;
+        }
+
+        var dialog = new ContentDialog
+        {
+            Title = "Kết thúc trận đấu",
+            Content = "Đối thủ đã ngắt kết nối. Bạn thắng!",
+            CloseButtonText = "Về menu",
+            XamlRoot = this.XamlRoot
+        };
+
+        await dialog.ShowAsync();
+
+        Frame.Navigate(typeof(MainMenuPage));
     }
-
-    var dialog = new ContentDialog
-    {
-        Title = "Kết thúc trận đấu",
-        Content = "Đối thủ đã ngắt kết nối. Bạn thắng!",
-        CloseButtonText = "Về menu",
-        XamlRoot = this.XamlRoot
-    };
-
-    await dialog.ShowAsync();
-
-    Frame.Navigate(typeof(MainMenuPage));
-}
-    
 
     // Xử lý logic hiển thị/cuộn danh sách Chat
     // ✅ ĐOẠN CODE MỚI ĐÃ ĐƯỢC BẢO VỆ, KHÔNG LO BỊ CRASH

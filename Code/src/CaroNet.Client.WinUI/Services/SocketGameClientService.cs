@@ -348,18 +348,11 @@ public sealed class SocketGameClientService : IGameClientService, IAsyncDisposab
 
             string reason = GetString(message.Payload, "reason");
 
-
-
-if (reason == "opponent_disconnected")
-{
-    _serverError = "Đối thủ đã ngắt kết nối. Bạn thắng!";
-}
-else
-{
-    _serverError = FirstNonEmpty(
-        GetString(message.Payload, "message"),
-        "Ván đấu đã kết thúc.");
-}
+            _serverError = reason == "opponent_disconnected"
+                ? "Đối thủ đã ngắt kết nối. Bạn thắng!"
+                : FirstNonEmpty(
+                    GetString(message.Payload, "message"),
+                    "Ván đấu đã kết thúc.");
         }
 
         PublishState();
