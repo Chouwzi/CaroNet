@@ -11,6 +11,9 @@ namespace CaroNet.Client.WinUI.Services;
 
 public sealed class SocketGameClientService : IGameClientService, IAsyncDisposable
 {
+    private readonly List<(int Row, int Col)> _winningCells = new();
+    public List<(int Row, int Col)> WinningCells => _winningCells;
+
     private const int BoardSize = 15;
     private static readonly TimeSpan RequestTimeout = TimeSpan.FromSeconds(10);
 
@@ -246,6 +249,9 @@ public sealed class SocketGameClientService : IGameClientService, IAsyncDisposab
                 case MessageType.GameEnded:
                     ApplyGameEnded(args.Message);
                     break;
+                case MessageType.RematchAccepted:
+                    ApplyRematchAccepted(args.Message);
+                    break;
                 case MessageType.ChatReceived:
                     ApplyChatReceived(args.Message);
                     break;
@@ -294,7 +300,6 @@ public sealed class SocketGameClientService : IGameClientService, IAsyncDisposab
                 : $"Đã vào phòng {_roomId}";
             _serverError = string.Empty;
 
-            // GameStarted gửi kèm board và lượt đi
             if (TryReadBoard(message.Payload, out string[,]? board))
             {
                 _board = board!;
@@ -310,7 +315,6 @@ public sealed class SocketGameClientService : IGameClientService, IAsyncDisposab
     {
         lock (_stateLock)
         {
-            // Board server gửi là nguồn dữ liệu chính; client chỉ render lại snapshot này.
             if (TryReadBoard(message.Payload, out string[,]? board))
             {
                 _board = board!;
@@ -346,9 +350,30 @@ public sealed class SocketGameClientService : IGameClientService, IAsyncDisposab
                 _board = board!;
             }
 
-            _serverError = FirstNonEmpty(
-                GetString(message.Payload, "message"),
-                "Ván đấu đã kết thúc.");
+            string reason = GetString(message.Payload, "reason");
+
+            _serverError = reason == "opponent_disconnected"
+                ? "Đối thủ đã ngắt kết nối. Bạn thắng!"
+                : FirstNonEmpty(
+                    GetString(message.Payload, "message"),
+                    "Ván đấu đã kết thúc.");
+
+            _connectionStatus = "Trò chơi kết thúc";
+            _winningCells.Clear();
+            if (message.Payload.HasValue &&
+                TryGetProperty(message.Payload, "winningCells", out var winningProp) &&
+                winningProp.ValueKind == JsonValueKind.Array)
+            {
+                foreach (var cellElement in winningProp.EnumerateArray())
+                {
+                    int row = ReadInt(cellElement, "row", "Row");
+                    int column = ReadInt(cellElement, "column", "Column", "col", "Col");
+                    if (row >= 0 && column >= 0)
+                    {
+                        _winningCells.Add((row, column));
+                    }
+                }
+            }
         }
 
         PublishState();
@@ -507,7 +532,6 @@ public sealed class SocketGameClientService : IGameClientService, IAsyncDisposab
             return false;
         }
 
-        // Server có thể serialize bằng camelCase hoặc PascalCase tùy layer.
         foreach (JsonProperty jsonProperty in objectPayload.EnumerateObject())
         {
             if (string.Equals(
@@ -545,6 +569,41 @@ public sealed class SocketGameClientService : IGameClientService, IAsyncDisposab
 
         await _connection.DisposeAsync();
     }
+
+    private void ApplyRematchAccepted(MessageEnvelope message)
+    {
+        lock (_stateLock)
+        {
+            _winningCells.Clear();
+
+            _playerSymbol = FirstNonEmpty(
+                GetString(message.Payload, "playerSymbol"),
+                GetString(message.Payload, "yourSymbol"),
+                GetString(message.Payload, "symbol"),
+                _playerSymbol);
+
+            _currentTurnSymbol = ResolveCurrentTurnSymbol(message.Payload);
+            _board = InitEmptyBoard();
+            _serverError = string.Empty;
+            _connectionStatus = "Trận đấu mới đã bắt đầu!";
+        }
+
+        PublishState();
+    }
+
+    public async Task SendRematchRequestAsync(CancellationToken cancellationToken = default)
+    {
+        await _connection.SendAsync(
+            new MessageEnvelope
+            {
+                Type = MessageType.Rematch,
+                RoomId = EmptyToNull(_roomId),
+                PlayerId = EmptyToNull(_playerId),
+                Payload = JsonSerializer.SerializeToElement(new { })
+            },
+            cancellationToken);
+    }
+
     private void ApplyChatReceived(MessageEnvelope message)
     {
         if (message.Payload.HasValue)
@@ -563,5 +622,20 @@ public sealed class SocketGameClientService : IGameClientService, IAsyncDisposab
                 UpdateError($"Không thể giải mã tin nhắn chat: {ex.Message}");
             }
         }
+    }
+
+    private static int ReadInt(JsonElement payload, params string[] propertyNames)
+    {
+        foreach (string propertyName in propertyNames)
+        {
+            if (payload.TryGetProperty(propertyName, out JsonElement property) &&
+                property.ValueKind == JsonValueKind.Number &&
+                property.TryGetInt32(out int value))
+            {
+                return value;
+            }
+        }
+
+        return -1;
     }
 }

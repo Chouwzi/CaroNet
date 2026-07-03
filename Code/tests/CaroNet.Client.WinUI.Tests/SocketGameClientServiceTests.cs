@@ -175,6 +175,73 @@ public sealed class SocketGameClientServiceTests
         Assert.Equal("Chưa tới lượt của bạn.", rejectedState.ServerError);
     }
 
+    [Fact]
+    public void GameEnded_WithOpponentDisconnectedReason_PublishesWinMessage()
+    {
+        var connection = new FakeClientConnection();
+        var service = new SocketGameClientService(connection);
+        var states = new List<GameViewState>();
+        string[][] board = CreateEmptyBoard();
+        board[4][5] = "O";
+
+        service.GameStateUpdated += (_, state) => states.Add(state);
+
+        connection.RaiseMessage(new MessageEnvelope
+        {
+            Type = MessageType.GameEnded,
+            Payload = JsonSerializer.SerializeToElement(new
+            {
+                reason = "opponent_disconnected",
+                winnerPlayerId = "player-x",
+                board
+            })
+        });
+
+        GameViewState endedState = states.Last();
+
+        Assert.Equal("Đối thủ đã ngắt kết nối. Bạn thắng!", endedState.ServerError);
+        Assert.Equal("O", endedState.Cells.Single(cell => cell.Row == 4 && cell.Column == 5).Mark);
+    }
+
+    [Fact]
+    public async Task DisconnectAsync_PublishesDisconnectedStatus()
+    {
+        var connection = new FakeClientConnection();
+        var service = new SocketGameClientService(connection);
+        var states = new List<GameViewState>();
+
+        service.GameStateUpdated += (_, state) => states.Add(state);
+
+        await connection.DisconnectAsync();
+
+        Assert.Equal("Mất kết nối server", states.Last().ConnectionStatus);
+    }
+
+    [Fact]
+    public void ChatReceived_PublishesSenderAndMessage()
+    {
+        var connection = new FakeClientConnection();
+        var service = new SocketGameClientService(connection);
+        var receivedMessages = new List<CaroNet.Shared.Protocol.Payloads.ChatReceivedPayload>();
+
+        service.ChatReceived += (_, payload) => receivedMessages.Add(payload);
+
+        connection.RaiseMessage(new MessageEnvelope
+        {
+            Type = MessageType.ChatReceived,
+            Payload = JsonSerializer.SerializeToElement(new
+            {
+                senderName = "Hệ thống",
+                message = "Đối thủ muốn chơi lại!",
+                timestamp = DateTime.UtcNow
+            })
+        });
+
+        var message = Assert.Single(receivedMessages);
+        Assert.Equal("Hệ thống", message.SenderName);
+        Assert.Equal("Đối thủ muốn chơi lại!", message.Message);
+    }
+
     private static string[][] CreateEmptyBoard()
     {
         return Enumerable.Range(0, GameViewModel.BoardSize)
