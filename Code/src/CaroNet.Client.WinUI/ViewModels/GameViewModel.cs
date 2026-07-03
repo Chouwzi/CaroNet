@@ -46,7 +46,7 @@ public sealed class GameViewModel : INotifyPropertyChanged
         _gameClient = gameClient;
         _syncContext = SynchronizationContext.Current;
 
-        _gameClient.GameStateUpdated += GameClient_GameStateUpdated;
+        _gameClient.GameStateUpdated += OnGameStateUpdatedFromServer;
         _gameClient.ChatReceived += GameClient_ChatReceived;
 
         for (var row = 0; row < BoardSize; row++)
@@ -75,7 +75,6 @@ public sealed class GameViewModel : INotifyPropertyChanged
         }
         catch (Exception)
         {
-            // Kháng lỗi đường truyền mạng
         }
     }
 
@@ -95,7 +94,6 @@ public sealed class GameViewModel : INotifyPropertyChanged
 
     public event PropertyChangedEventHandler? PropertyChanged;
     public ObservableCollection<BoardCellViewModel> BoardCells { get; } = [];
-
 
     public void SetDispatcher(Action<Action> dispatcher)
     {
@@ -138,6 +136,19 @@ public sealed class GameViewModel : INotifyPropertyChanged
         private set => SetProperty(ref _serverError, value);
     }
 
+    public bool IsMyTurn => CurrentTurnSymbol == PlayerSymbol && !string.IsNullOrEmpty(PlayerSymbol);
+
+    public string TurnMessage
+    {
+        get
+        {
+            if (string.IsNullOrEmpty(PlayerSymbol) || string.IsNullOrEmpty(RoomId))
+                return "Đang chờ đối thủ...";
+
+            return IsMyTurn ? "🎯 Lượt của bạn!" : "⏳ Đợi đối thủ...";
+        }
+    }
+
     public async Task MakeMoveAsync(int row, int column)
     {
         try
@@ -146,11 +157,44 @@ public sealed class GameViewModel : INotifyPropertyChanged
         }
         catch (Exception)
         {
-            // Bảo vệ ứng dụng nếu mất kết nối khi bấm ô cờ
         }
     }
 
-    // Hàm phụ trợ dùng chung để ép bất kỳ tiến trình nào về luồng UI một cách an toàn
+    private GameViewState MapToGameViewState(GameViewState incomingState)
+    {
+        var state = new GameViewState
+        {
+            RoomId = incomingState.RoomId,
+            PlayerName = incomingState.PlayerName,
+            PlayerSymbol = incomingState.PlayerSymbol,
+            CurrentTurnSymbol = incomingState.CurrentTurnSymbol,
+            ConnectionStatus = incomingState.ConnectionStatus,
+            ServerError = incomingState.ServerError,
+            OpponentName = incomingState.OpponentName,
+            MyScore = incomingState.MyScore,
+            OpponentScore = incomingState.OpponentScore
+        };
+
+        state.Cells = new List<CellState>();
+        foreach (var cell in incomingState.Cells)
+        {
+            state.Cells.Add(new CellState
+            {
+                Row = cell.Row,
+                Column = cell.Column,
+                Mark = cell.Mark
+            });
+        }
+
+        return state;
+    }
+
+    private void OnGameStateUpdatedFromServer(object? sender, GameViewState state)
+    {
+        var mappedState = MapToGameViewState(state);
+        SafeExecuteOnUI(() => ApplyState(mappedState));
+    }
+
     private void SafeExecuteOnUI(Action action)
     {
         if (_dispatchToUI is not null)
@@ -165,12 +209,6 @@ public sealed class GameViewModel : INotifyPropertyChanged
         {
             action();
         }
-    }
-
-    private void GameClient_GameStateUpdated(object? sender, GameViewState state)
-    {
-        
-        SafeExecuteOnUI(() => ApplyState(state));
     }
 
     private void ApplyState(GameViewState state)
@@ -193,6 +231,8 @@ public sealed class GameViewModel : INotifyPropertyChanged
 
         PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(IsChatInputEnabled)));
         PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(IsSendButtonEnabled)));
+        OnPropertyChanged(nameof(IsMyTurn));
+        OnPropertyChanged(nameof(TurnMessage));
     }
 
     private void SetProperty<T>(ref T field, T value, [CallerMemberName] string? propertyName = null)
@@ -208,7 +248,6 @@ public sealed class GameViewModel : INotifyPropertyChanged
 
     private void GameClient_ChatReceived(object? sender, CaroNet.Shared.Protocol.Payloads.ChatReceivedPayload payload)
     {
-        // Khóa chặt việc nạp tin nhắn chat luôn luôn phải chạy trên luồng giao diện chính
         SafeExecuteOnUI(() => AddChatMessageToUI(payload));
     }
 
@@ -216,34 +255,9 @@ public sealed class GameViewModel : INotifyPropertyChanged
     {
         ChatMessages.Add(new ChatMessageViewModel(payload.SenderName, payload.Message, payload.Timestamp));
     }
-}
 
-public sealed class BoardCellViewModel : INotifyPropertyChanged
-{
-    private string _mark = string.Empty;
-
-    public BoardCellViewModel(int row, int column)
+    private void OnPropertyChanged([CallerMemberName] string? propertyName = null)
     {
-        Row = row;
-        Column = column;
-    }
-
-    public event PropertyChangedEventHandler? PropertyChanged;
-    public int Row { get; }
-    public int Column { get; }
-
-    public string Mark
-    {
-        get => _mark;
-        set
-        {
-            if (_mark == value)
-            {
-                return;
-            }
-
-            _mark = value;
-            PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(Mark)));
-        }
+        PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(propertyName));
     }
 }
