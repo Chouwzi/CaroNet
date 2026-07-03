@@ -124,17 +124,52 @@ public sealed partial class GamePage : Page
 
         foreach (var cell in _viewModel.BoardCells)
         {
-            var button = new Button
+            var cellContent = new Grid
             {
                 DataContext = cell,
-                Style = (Style)Resources["BoardCellButtonStyle"],
+                IsHitTestVisible = false
             };
 
-            button.SetBinding(ContentControl.ContentProperty, new Binding
+            var markText = new TextBlock
+            {
+                FontSize = 22,
+                FontWeight = Microsoft.UI.Text.FontWeights.SemiBold,
+                HorizontalAlignment = HorizontalAlignment.Center,
+                VerticalAlignment = VerticalAlignment.Center
+            };
+
+            markText.SetBinding(TextBlock.TextProperty, new Binding
             {
                 Path = new PropertyPath(nameof(BoardCellViewModel.Mark)),
                 Mode = BindingMode.OneWay,
             });
+
+            var lastMoveDot = new Border
+            {
+                Width = 8,
+                Height = 8,
+                CornerRadius = new CornerRadius(4),
+                Background = new SolidColorBrush(Colors.Red),
+                HorizontalAlignment = HorizontalAlignment.Right,
+                VerticalAlignment = VerticalAlignment.Top,
+                Margin = new Thickness(0, 3, 3, 0)
+            };
+
+            lastMoveDot.SetBinding(UIElement.OpacityProperty, new Binding
+            {
+                Path = new PropertyPath(nameof(BoardCellViewModel.LastMoveIndicatorOpacity)),
+                Mode = BindingMode.OneWay,
+            });
+
+            cellContent.Children.Add(markText);
+            cellContent.Children.Add(lastMoveDot);
+
+            var button = new Button
+            {
+                DataContext = cell,
+                Content = cellContent,
+                Style = (Style)Resources["BoardCellButtonStyle"],
+            };
 
             button.SetBinding(Control.IsEnabledProperty, new Binding
             {
