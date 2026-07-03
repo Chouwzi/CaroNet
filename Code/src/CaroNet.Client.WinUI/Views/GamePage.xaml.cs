@@ -30,25 +30,53 @@ public sealed partial class GamePage : Page
     {
         this.InitializeComponent();
 
-        // 1. Khởi tạo ViewModel kết nối qua dịch vụ Game mạng (AppServices.GameClient) của bạn
         _viewModel = new GameViewModel(AppServices.GameClient);
         this.DataContext = _viewModel;
 
-        // 2. Thiết lập DispatcherQueue chuẩn WinUI 3 để tránh crash khi nhận dữ liệu từ Thread chạy ngầm
         _viewModel.SetDispatcher(action => DispatcherQueue.TryEnqueue(
             Microsoft.UI.Dispatching.DispatcherQueuePriority.Normal,
             () => action()));
 
-        // 3. Đăng ký sự kiện theo dõi tin nhắn chat để cập nhật UI
         _viewModel.ChatMessages.CollectionChanged += ChatMessages_CollectionChanged;
         _viewModel.PropertyChanged += ViewModel_PropertyChanged;
 
-        // Trạng thái mờ hiển thị ban đầu khi chưa có ai nhắn tin
         EmptyStateTextBlock.Visibility = Visibility.Visible;
 
-        // 4. Vẽ bàn cờ Caro lên giao diện Grid
         BuildBoard();
         UpdateTurnUI();
+    }
+
+    private async void ViewModel_PropertyChanged(
+        object? sender,
+        System.ComponentModel.PropertyChangedEventArgs e)
+    {
+        if (e.PropertyName == nameof(GameViewModel.IsMyTurn) ||
+            e.PropertyName == nameof(GameViewModel.TurnMessage))
+        {
+            UpdateTurnUI();
+        }
+
+        if (e.PropertyName != nameof(GameViewModel.ServerError))
+        {
+            return;
+        }
+
+        if (_viewModel.ServerError != "Đối thủ đã ngắt kết nối. Bạn thắng!")
+        {
+            return;
+        }
+
+        var dialog = new ContentDialog
+        {
+            Title = "Kết thúc trận đấu",
+            Content = "Đối thủ đã ngắt kết nối. Bạn thắng!",
+            CloseButtonText = "Về menu",
+            XamlRoot = this.XamlRoot
+        };
+
+        await dialog.ShowAsync();
+
+        Frame.Navigate(typeof(MainMenuPage));
     }
 
     // Xử lý logic hiển thị/cuộn danh sách Chat
@@ -139,15 +167,6 @@ public sealed partial class GamePage : Page
         if (sender is Button { DataContext: BoardCellViewModel cell })
         {
             await _viewModel.MakeMoveAsync(cell.Row, cell.Column);
-        }
-    }
-
-    private void ViewModel_PropertyChanged(object? sender, System.ComponentModel.PropertyChangedEventArgs e)
-    {
-        if (e.PropertyName == nameof(GameViewModel.IsMyTurn) ||
-            e.PropertyName == nameof(GameViewModel.TurnMessage))
-        {
-            UpdateTurnUI();
         }
     }
 
