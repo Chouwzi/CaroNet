@@ -32,10 +32,22 @@ public sealed class MainMenuViewModelTests
         // Vô hiệu hóa cảnh báo CS0067 dành riêng cho các sự kiện giả lập của Test double
         public event EventHandler<CaroNet.Shared.Protocol.Payloads.ChatReceivedPayload>? ChatReceived;
 
+        public event EventHandler<DrawOfferReceivedEventArgs>? DrawOfferReceived;
+
         public event EventHandler<GameViewState>? GameStateUpdated;
 #pragma warning restore CS0067
 
         public Task SendChatAsync(string message) => Task.CompletedTask;
+
+        public Task SendResignAsync(CancellationToken cancellationToken = default) => Task.CompletedTask;
+
+        public Task SendDrawOfferAsync(CancellationToken cancellationToken = default) => Task.CompletedTask;
+
+        public Task SendDrawResponseAsync(bool accepted, CancellationToken cancellationToken = default) => Task.CompletedTask;
+
+        public Task SendRematchRequestAsync(CancellationToken cancellationToken = default) => Task.CompletedTask;
+
+        public Task LeaveRoomAsync(CancellationToken cancellationToken = default) => Task.CompletedTask;
 
         public GameViewState CurrentState { get; } = new(
             string.Empty,

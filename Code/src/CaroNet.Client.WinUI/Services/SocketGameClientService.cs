@@ -29,12 +29,15 @@ public sealed class SocketGameClientService : IGameClientService, IAsyncDisposab
     private string _playerSymbol = "?";
     private string _roomId = string.Empty;
     private string _serverError = string.Empty;
+    private bool _hasOpponent;
     private int _myScore;
     private int _opponentScore;
     private string[,] _board = InitEmptyBoard();
 
     // Định nghĩa sự kiện nhận Chat từ Socket mạng thật gửi về
     public event EventHandler<CaroNet.Shared.Protocol.Payloads.ChatReceivedPayload>? ChatReceived;
+
+    public event EventHandler<DrawOfferReceivedEventArgs>? DrawOfferReceived;
 
     // Hàm gửi tin nhắn qua Socket lên Server mạng thật
     public async Task SendChatAsync(string message)
@@ -195,6 +198,75 @@ public sealed class SocketGameClientService : IGameClientService, IAsyncDisposab
             cancellationToken);
     }
 
+    public async Task SendResignAsync(CancellationToken cancellationToken = default)
+    {
+        await _connection.SendAsync(
+            new MessageEnvelope
+            {
+                Type = MessageType.Resign,
+                RoomId = EmptyToNull(_roomId),
+                PlayerId = EmptyToNull(_playerId),
+                Payload = JsonSerializer.SerializeToElement(new { })
+            },
+            cancellationToken);
+    }
+
+    public async Task SendDrawOfferAsync(CancellationToken cancellationToken = default)
+    {
+        await _connection.SendAsync(
+            new MessageEnvelope
+            {
+                Type = MessageType.DrawOffer,
+                RoomId = EmptyToNull(_roomId),
+                PlayerId = EmptyToNull(_playerId),
+                Payload = JsonSerializer.SerializeToElement(new { })
+            },
+            cancellationToken);
+    }
+
+    public async Task SendDrawResponseAsync(bool accepted, CancellationToken cancellationToken = default)
+    {
+        await _connection.SendAsync(
+            new MessageEnvelope
+            {
+                Type = MessageType.DrawResponse,
+                RoomId = EmptyToNull(_roomId),
+                PlayerId = EmptyToNull(_playerId),
+                Payload = JsonSerializer.SerializeToElement(new
+                {
+                    accepted
+                })
+            },
+            cancellationToken);
+    }
+
+    public async Task LeaveRoomAsync(CancellationToken cancellationToken = default)
+    {
+        string roomId;
+        string playerId;
+
+        lock (_stateLock)
+        {
+            roomId = _roomId;
+            playerId = _playerId;
+        }
+
+        if (!string.IsNullOrWhiteSpace(roomId))
+        {
+            await _connection.SendAsync(
+                new MessageEnvelope
+                {
+                    Type = MessageType.LeaveRoom,
+                    RoomId = EmptyToNull(roomId),
+                    PlayerId = EmptyToNull(playerId),
+                    Payload = JsonSerializer.SerializeToElement(new { })
+                },
+                cancellationToken);
+        }
+
+        ResetRoomState("Đã rời phòng.");
+    }
+
     private TaskCompletionSource<GameViewState> PrepareRoomJoinWaiter()
     {
         var completion = new TaskCompletionSource<GameViewState>(
@@ -258,6 +330,9 @@ public sealed class SocketGameClientService : IGameClientService, IAsyncDisposab
                 case MessageType.ChatReceived:
                     ApplyChatReceived(args.Message);
                     break;
+                case MessageType.DrawOffer:
+                    ApplyDrawOffer(args.Message);
+                    break;
             }
         }
         catch (Exception ex)
@@ -305,6 +380,7 @@ public sealed class SocketGameClientService : IGameClientService, IAsyncDisposab
                 ? "Đã vào phòng"
                 : $"Đã vào phòng {_roomId}";
             _serverError = string.Empty;
+            _hasOpponent = message.Type == MessageType.GameStarted;
 
             if (TryReadBoard(message.Payload, out string[,]? board))
             {
@@ -367,6 +443,16 @@ public sealed class SocketGameClientService : IGameClientService, IAsyncDisposab
 
             _serverError = reason == "opponent_disconnected"
                 ? "Đối thủ đã ngắt kết nối. Bạn thắng!"
+                : reason == "resigned" && GetString(message.Payload, "winnerPlayerId") == _playerId
+                    ? "Đối thủ đầu hàng. Bạn thắng!"
+                : reason == "resigned"
+                    ? "Bạn đã đầu hàng. Bạn thua."
+                : reason == "draw_agreed"
+                    ? "Hai bên đã đồng ý hòa."
+                : reason == "timeout" && GetString(message.Payload, "winnerPlayerId") == _playerId
+                    ? "Đối thủ hết thời gian. Bạn thắng!"
+                : reason == "timeout"
+                    ? "Bạn hết thời gian. Bạn thua."
                 : FirstNonEmpty(
                     GetString(message.Payload, "message"),
                     "Ván đấu đã kết thúc.");
@@ -432,6 +518,26 @@ public sealed class SocketGameClientService : IGameClientService, IAsyncDisposab
         PublishState();
     }
 
+    private void ResetRoomState(string connectionStatus)
+    {
+        lock (_stateLock)
+        {
+            _roomId = string.Empty;
+            _playerSymbol = "?";
+            _currentTurnSymbol = "X";
+            _opponentName = "Đối thủ";
+            _hasOpponent = false;
+            _serverError = string.Empty;
+            _connectionStatus = connectionStatus;
+            _myScore = 0;
+            _opponentScore = 0;
+            _winningCells.Clear();
+            _board = InitEmptyBoard();
+        }
+
+        PublishState();
+    }
+
     private GameViewState PublishState()
     {
         GameViewState state = BuildState();
@@ -453,7 +559,9 @@ public sealed class SocketGameClientService : IGameClientService, IAsyncDisposab
                 BuildCells(),
                 _opponentName,
                 _myScore,
-                _opponentScore);
+                _opponentScore,
+                _hasOpponent,
+                _playerId);
         }
     }
 
@@ -608,6 +716,7 @@ public sealed class SocketGameClientService : IGameClientService, IAsyncDisposab
             _currentTurnSymbol = ResolveCurrentTurnSymbol(message.Payload);
             _board = InitEmptyBoard();
             _serverError = string.Empty;
+            _hasOpponent = true;
             _connectionStatus = "Trận đấu mới đã bắt đầu!";
         }
 
@@ -645,6 +754,18 @@ public sealed class SocketGameClientService : IGameClientService, IAsyncDisposab
                 UpdateError($"Không thể giải mã tin nhắn chat: {ex.Message}");
             }
         }
+    }
+
+    private void ApplyDrawOffer(MessageEnvelope message)
+    {
+        string senderPlayerId = GetString(message.Payload, "senderPlayerId");
+        string senderName = FirstNonEmpty(
+            GetString(message.Payload, "senderName"),
+            "Đối thủ");
+
+        DrawOfferReceived?.Invoke(
+            this,
+            new DrawOfferReceivedEventArgs(senderPlayerId, senderName));
     }
 
     private static int ReadInt(JsonElement payload, params string[] propertyNames)

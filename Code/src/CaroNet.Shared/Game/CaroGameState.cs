@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 
 namespace CaroNet.Shared.Game;
 
@@ -81,5 +81,29 @@ public class CaroGameState
         MoveCount = 0;
         CurrentPlayer = startingPlayer;
         Status = GameStatus.Playing;
+    }
+
+    public void EndByResignation(PlayerSymbol winner)
+    {
+        if (Status != GameStatus.Playing)
+            return;
+
+        Status = winner == PlayerSymbol.X ? GameStatus.XWon : GameStatus.OWon;
+    }
+
+    public void EndAsDraw()
+    {
+        if (Status != GameStatus.Playing)
+            return;
+
+        Status = GameStatus.Draw;
+    }
+
+    public void EndByTimeout(PlayerSymbol winner)
+    {
+        if (Status != GameStatus.Playing)
+            return;
+
+        Status = winner == PlayerSymbol.X ? GameStatus.XWon : GameStatus.OWon;
     }
 }
