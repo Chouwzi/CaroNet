@@ -40,6 +40,49 @@ public sealed class SocketGameClientServiceTests
         Assert.Equal("Alice", state.PlayerName);
         Assert.Equal("X", state.PlayerSymbol);
         Assert.Equal("Đã vào phòng ROOM-01", state.ConnectionStatus);
+        Assert.False(state.HasOpponent);
+    }
+
+    [Fact]
+    public async Task GameStarted_MarksOpponentAsPresent()
+    {
+        var connection = new FakeClientConnection();
+        var service = new SocketGameClientService(connection);
+        var states = new List<GameViewState>();
+
+        service.GameStateUpdated += (_, state) => states.Add(state);
+
+        await service.ConnectAsync(
+            new ConnectionRequest("Alice", "127.0.0.1", 5000),
+            CancellationToken.None);
+
+        connection.RaiseMessage(new MessageEnvelope
+        {
+            Type = MessageType.RoomJoined,
+            Payload = JsonSerializer.SerializeToElement(new
+            {
+                roomId = "ROOM-01",
+                playerId = "player-x",
+                playerSymbol = "X"
+            })
+        });
+
+        connection.RaiseMessage(new MessageEnvelope
+        {
+            Type = MessageType.GameStarted,
+            PlayerId = "player-x",
+            Payload = JsonSerializer.SerializeToElement(new
+            {
+                roomId = "ROOM-01",
+                yourSymbol = "X",
+                opponentName = "Bob",
+                currentTurnPlayerId = "player-x",
+                board = CreateEmptyBoard()
+            })
+        });
+
+        Assert.True(states.Last().HasOpponent);
+        Assert.Equal("Bob", states.Last().OpponentName);
     }
 
     [Fact]
@@ -155,6 +198,70 @@ public sealed class SocketGameClientServiceTests
     }
 
     [Fact]
+    public async Task RematchAccepted_ClearsEndedStateErrorAndWinningCells()
+    {
+        var connection = new FakeClientConnection();
+        var service = new SocketGameClientService(connection);
+        var states = new List<GameViewState>();
+
+        service.GameStateUpdated += (_, state) => states.Add(state);
+
+        await service.ConnectAsync(
+            new ConnectionRequest("Alice", "127.0.0.1", 5000),
+            CancellationToken.None);
+
+        connection.RaiseMessage(new MessageEnvelope
+        {
+            Type = MessageType.GameStarted,
+            PlayerId = "player-x",
+            Payload = JsonSerializer.SerializeToElement(new
+            {
+                roomId = "ROOM-01",
+                yourSymbol = "X",
+                opponentName = "Bob",
+                currentTurnPlayerId = "player-x",
+                board = CreateEmptyBoard()
+            })
+        });
+
+        connection.RaiseMessage(new MessageEnvelope
+        {
+            Type = MessageType.GameEnded,
+            Payload = JsonSerializer.SerializeToElement(new
+            {
+                winnerPlayerId = "player-x",
+                message = "Ván đấu đã kết thúc.",
+                board = CreateEmptyBoard(),
+                winningCells = new[]
+                {
+                    new { row = 0, column = 0 }
+                }
+            })
+        });
+
+        connection.RaiseMessage(new MessageEnvelope
+        {
+            Type = MessageType.RematchAccepted,
+            PlayerId = "player-o",
+            Payload = JsonSerializer.SerializeToElement(new
+            {
+                roomId = "ROOM-01",
+                yourSymbol = "O",
+                opponentName = "Bob",
+                currentTurnPlayerId = "player-o",
+                board = CreateEmptyBoard()
+            })
+        });
+
+        GameViewState rematchState = states.Last();
+
+        Assert.Equal("Trận đấu mới đã bắt đầu!", rematchState.ConnectionStatus);
+        Assert.Empty(rematchState.ServerError);
+        Assert.True(rematchState.HasOpponent);
+        Assert.Empty(service.WinningCells);
+    }
+
+    [Fact]
     public async Task GameStarted_PublishesOpponentName_AndGameEndedUpdatesScore()
     {
         var connection = new FakeClientConnection();
@@ -250,6 +357,75 @@ public sealed class SocketGameClientServiceTests
     }
 
     [Fact]
+    public async Task MatchActionMethods_SendExpectedMessageTypes()
+    {
+        var connection = new FakeClientConnection();
+        var service = new SocketGameClientService(connection);
+
+        await service.ConnectAsync(
+            new ConnectionRequest("Alice", "127.0.0.1", 5000),
+            CancellationToken.None);
+
+        connection.RaiseMessage(new MessageEnvelope
+        {
+            Type = MessageType.GameStarted,
+            PlayerId = "player-x",
+            Payload = JsonSerializer.SerializeToElement(new
+            {
+                roomId = "ROOM-01",
+                yourSymbol = "X",
+                opponentName = "Bob",
+                currentTurnPlayerId = "player-x",
+                board = CreateEmptyBoard()
+            })
+        });
+
+        await service.SendResignAsync(CancellationToken.None);
+        await service.SendDrawOfferAsync(CancellationToken.None);
+        await service.SendDrawResponseAsync(true, CancellationToken.None);
+
+        var lastThree = connection.SentMessages.TakeLast(3).ToArray();
+
+        Assert.Equal(MessageType.Resign, lastThree[0].Type);
+        Assert.Equal(MessageType.DrawOffer, lastThree[1].Type);
+        Assert.Equal(MessageType.DrawResponse, lastThree[2].Type);
+        Assert.True(lastThree[2].Payload!.Value.GetProperty("accepted").GetBoolean());
+    }
+
+    [Fact]
+    public async Task LeaveRoomAsync_SendsLeaveRoomAndClearsLocalRoomState()
+    {
+        var connection = new FakeClientConnection();
+        var service = new SocketGameClientService(connection);
+
+        await service.ConnectAsync(
+            new ConnectionRequest("Alice", "127.0.0.1", 5000),
+            CancellationToken.None);
+
+        connection.RaiseMessage(new MessageEnvelope
+        {
+            Type = MessageType.RoomJoined,
+            PlayerId = "player-x",
+            Payload = JsonSerializer.SerializeToElement(new
+            {
+                roomId = "ROOM-01",
+                playerId = "player-x",
+                playerSymbol = "X"
+            })
+        });
+
+        await service.LeaveRoomAsync(CancellationToken.None);
+
+        MessageEnvelope leaveRoom = connection.SentMessages.Last();
+        Assert.Equal(MessageType.LeaveRoom, leaveRoom.Type);
+        Assert.Equal("ROOM-01", leaveRoom.RoomId);
+        Assert.Empty(service.CurrentState.RoomId);
+        Assert.Equal("?", service.CurrentState.PlayerSymbol);
+        Assert.False(service.CurrentState.HasOpponent);
+        Assert.Equal("Đã rời phòng.", service.CurrentState.ConnectionStatus);
+    }
+
+    [Fact]
     public async Task MoveRejected_publishes_error_without_changing_existing_board()
     {
         var connection = new FakeClientConnection();
@@ -316,6 +492,40 @@ public sealed class SocketGameClientServiceTests
 
         Assert.Equal("Đối thủ đã ngắt kết nối. Bạn thắng!", endedState.ServerError);
         Assert.Equal("O", endedState.Cells.Single(cell => cell.Row == 4 && cell.Column == 5).Mark);
+    }
+
+    [Fact]
+    public void GameEnded_WithTimeoutReason_PublishesTimeoutMessage()
+    {
+        var connection = new FakeClientConnection();
+        var service = new SocketGameClientService(connection);
+        var states = new List<GameViewState>();
+
+        service.GameStateUpdated += (_, state) => states.Add(state);
+
+        connection.RaiseMessage(new MessageEnvelope
+        {
+            Type = MessageType.HelloAccepted,
+            PlayerId = "player-x",
+            Payload = JsonSerializer.SerializeToElement(new
+            {
+                playerId = "player-x",
+                playerName = "Alice"
+            })
+        });
+
+        connection.RaiseMessage(new MessageEnvelope
+        {
+            Type = MessageType.GameEnded,
+            Payload = JsonSerializer.SerializeToElement(new
+            {
+                reason = "timeout",
+                winnerPlayerId = "player-o",
+                board = CreateEmptyBoard()
+            })
+        });
+
+        Assert.Equal("Bạn hết thời gian. Bạn thua.", states.Last().ServerError);
     }
 
     [Fact]

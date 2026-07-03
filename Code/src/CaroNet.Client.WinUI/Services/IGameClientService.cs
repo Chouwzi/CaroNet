@@ -11,6 +11,7 @@ public interface IGameClientService
 {
 
     event EventHandler<ChatReceivedPayload> ChatReceived;
+    event EventHandler<DrawOfferReceivedEventArgs>? DrawOfferReceived;
     Task SendChatAsync(string message);
     event EventHandler<GameViewState>? GameStateUpdated;
 
@@ -23,6 +24,16 @@ public interface IGameClientService
     Task<GameViewState> JoinRoomAsync(string roomId, CancellationToken cancellationToken);
 
     Task MakeMoveAsync(BoardPosition position, CancellationToken cancellationToken);
+
+    Task SendResignAsync(CancellationToken cancellationToken = default);
+
+    Task SendDrawOfferAsync(CancellationToken cancellationToken = default);
+
+    Task SendDrawResponseAsync(bool accepted, CancellationToken cancellationToken = default);
+
+    Task SendRematchRequestAsync(CancellationToken cancellationToken = default);
+
+    Task LeaveRoomAsync(CancellationToken cancellationToken = default);
 }
 
 public sealed record ConnectionRequest(string PlayerName, string Host, int Port);
@@ -37,6 +48,10 @@ public sealed record GameViewState(
     IReadOnlyList<CellViewState> Cells,
     string OpponentName = "Đối thủ",
     int MyScore = 0,
-    int OpponentScore = 0);
+    int OpponentScore = 0,
+    bool HasOpponent = false,
+    string PlayerId = "");
 
 public sealed record CellViewState(int Row, int Column, string Mark);
+
+public sealed record DrawOfferReceivedEventArgs(string SenderPlayerId, string SenderName);

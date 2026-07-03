@@ -16,10 +16,15 @@ public sealed class LocalDemoGameClientService : IGameClientService
     private string _playerName = "Player";
     private string _playerSymbol = "X";
     private string _roomId = string.Empty;
+    private bool _hasOpponent;
     private GameViewState? _currentState;
 
     // Đăng ký sự kiện Chat cho class demo
     public event EventHandler<CaroNet.Shared.Protocol.Payloads.ChatReceivedPayload>? ChatReceived;
+
+#pragma warning disable CS0067
+    public event EventHandler<DrawOfferReceivedEventArgs>? DrawOfferReceived;
+#pragma warning restore CS0067
 
     // Xử lý gửi chat ảo khi chạy Demo không có mạng
     public async Task SendChatAsync(string message)
@@ -51,6 +56,7 @@ public sealed class LocalDemoGameClientService : IGameClientService
     {
         _roomId = "ROOM-001";
         _playerSymbol = "X";
+        _hasOpponent = false;
         _connectionStatus = $"Đã tạo phòng {_roomId}";
         var state = PublishState(string.Empty);
         return Task.FromResult(state);
@@ -60,6 +66,7 @@ public sealed class LocalDemoGameClientService : IGameClientService
     {
         _roomId = string.IsNullOrWhiteSpace(roomId) ? "ROOM-001" : roomId.Trim();
         _playerSymbol = "O";
+        _hasOpponent = true;
         _connectionStatus = $"Đã vào phòng {_roomId}";
         var state = PublishState(string.Empty);
         return Task.FromResult(state);
@@ -91,6 +98,51 @@ public sealed class LocalDemoGameClientService : IGameClientService
         return Task.CompletedTask;
     }
 
+    public Task SendResignAsync(CancellationToken cancellationToken = default)
+    {
+        PublishState("Bạn đã đầu hàng.");
+        return Task.CompletedTask;
+    }
+
+    public Task SendDrawOfferAsync(CancellationToken cancellationToken = default)
+    {
+        ChatReceived?.Invoke(this, new CaroNet.Shared.Protocol.Payloads.ChatReceivedPayload
+        {
+            SenderName = "Hệ thống (Demo)",
+            Message = "Bạn đã gửi lời xin hòa.",
+            Timestamp = DateTime.Now
+        });
+
+        return Task.CompletedTask;
+    }
+
+    public Task SendDrawResponseAsync(bool accepted, CancellationToken cancellationToken = default)
+    {
+        return Task.CompletedTask;
+    }
+
+    public Task SendRematchRequestAsync(CancellationToken cancellationToken = default)
+    {
+        Array.Clear(_board, 0, _board.Length);
+        _currentTurnSymbol = "X";
+        _hasOpponent = true;
+        _connectionStatus = "Trận đấu mới đã bắt đầu!";
+        PublishState(string.Empty);
+        return Task.CompletedTask;
+    }
+
+    public Task LeaveRoomAsync(CancellationToken cancellationToken = default)
+    {
+        Array.Clear(_board, 0, _board.Length);
+        _roomId = string.Empty;
+        _playerSymbol = "?";
+        _currentTurnSymbol = "X";
+        _hasOpponent = false;
+        _connectionStatus = "Đã rời phòng.";
+        PublishState(string.Empty);
+        return Task.CompletedTask;
+    }
+
     private GameViewState PublishState(string serverError)
     {
         var state = BuildState(serverError);
@@ -108,7 +160,9 @@ public sealed class LocalDemoGameClientService : IGameClientService
             _currentTurnSymbol,
             _connectionStatus,
             serverError,
-            BuildCells());
+            BuildCells(),
+            HasOpponent: _hasOpponent,
+            PlayerId: "demo-player");
 
         return state;
     }
