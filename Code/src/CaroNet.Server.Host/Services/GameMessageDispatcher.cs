@@ -668,10 +668,11 @@ public sealed class GameMessageDispatcher : IMessageDispatcher
                 {
                     Type = MessageType.ChatReceived,
                     RoomId = room.RoomId,
-                    Payload = JsonSerializer.SerializeToElement(new
+                    Payload = JsonSerializer.SerializeToElement(new ChatReceivedPayload
                     {
-                        sender = "Hệ thống",
-                        message = "Đối thủ muốn chơi lại! Bấm Chơi lại để bắt đầu trận mới."
+                        SenderName = "Hệ thống",
+                        Message = "Đối thủ muốn chơi lại! Bấm Chơi lại để bắt đầu trận mới.",
+                        Timestamp = DateTime.Now
                     })
                 }, cancellationToken);
             }
