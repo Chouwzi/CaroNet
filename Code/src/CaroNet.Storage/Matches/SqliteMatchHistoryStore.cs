@@ -21,6 +21,7 @@ public sealed class SqliteMatchHistoryStore : IMatchHistoryStore
 
         await using var connection = new SqliteConnection(_connectionString);
         await connection.OpenAsync(cancellationToken);
+
         await using SqliteTransaction transaction =
             (SqliteTransaction)await connection.BeginTransactionAsync(cancellationToken);
 
