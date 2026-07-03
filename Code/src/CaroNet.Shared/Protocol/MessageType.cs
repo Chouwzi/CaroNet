@@ -11,6 +11,7 @@ public enum MessageType
     Chat = 6,
     Heartbeat = 7,
     Reconnect = 8,
+    Rematch = 9,
 
     // Server -> Client
     HelloAccepted = 50,
@@ -22,6 +23,7 @@ public enum MessageType
     GameStateUpdated = 56,
     GameEnded = 57,
     ChatReceived = 58,
+    RematchAccepted = 59,
 
     Error = 100
 }
