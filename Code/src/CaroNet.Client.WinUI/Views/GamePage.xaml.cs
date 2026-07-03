@@ -1,24 +1,16 @@
 using CaroNet.Client.WinUI.ViewModels;
-using CaroNet.Shared.Game;
 using Microsoft.UI;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
-<<<<<<< HEAD
 using Microsoft.UI.Xaml.Data;
 using System;
 using System.Threading.Tasks;
-using Microsoft.UI.Xaml.Media; // Thêm namespace này ở đầu file GamePage.xaml.cs
-=======
 using Microsoft.UI.Xaml.Media;
-using Windows.UI;
->>>>>>> feature/43-turn-indicator
 
 namespace CaroNet.Client.WinUI.Views;
 
 public sealed partial class GamePage : Page
 {
-<<<<<<< HEAD
-
     private T? FindVisualChild<T>(DependencyObject element) where T : DependencyObject
     {
         for (int i = 0; i < VisualTreeHelper.GetChildrenCount(element); i++)
@@ -31,15 +23,12 @@ public sealed partial class GamePage : Page
         }
         return null;
     }
+
     private readonly GameViewModel _viewModel;
-=======
-    private GameViewModel? _viewModel;
->>>>>>> feature/43-turn-indicator
 
     public GamePage()
     {
         this.InitializeComponent();
-<<<<<<< HEAD
 
         // 1. Khởi tạo ViewModel kết nối qua dịch vụ Game mạng (AppServices.GameClient) của bạn
         _viewModel = new GameViewModel(AppServices.GameClient);
@@ -52,12 +41,14 @@ public sealed partial class GamePage : Page
 
         // 3. Đăng ký sự kiện theo dõi tin nhắn chat để cập nhật UI
         _viewModel.ChatMessages.CollectionChanged += ChatMessages_CollectionChanged;
+        _viewModel.PropertyChanged += ViewModel_PropertyChanged;
 
         // Trạng thái mờ hiển thị ban đầu khi chưa có ai nhắn tin
         EmptyStateTextBlock.Visibility = Visibility.Visible;
 
         // 4. Vẽ bàn cờ Caro lên giao diện Grid
         BuildBoard();
+        UpdateTurnUI();
     }
 
     // Xử lý logic hiển thị/cuộn danh sách Chat
@@ -104,75 +95,50 @@ public sealed partial class GamePage : Page
     }
 
     // Logic sinh động sinh các ô nút bấm (Button) cho bàn cờ Caro của bạn
-=======
-        this.Loaded += GamePage_Loaded;
-    }
-
-    private void GamePage_Loaded(object sender, RoutedEventArgs e)
-    {
-        // Khởi tạo ViewModel và tạo bàn cờ (giống develop)
-        if (DataContext is GameViewModel viewModel)
-        {
-            _viewModel = viewModel;
-            _viewModel.PropertyChanged += ViewModel_PropertyChanged;
-
-            BuildBoard();           // Tạo bàn cờ 15x15
-            UpdateTurnUI();         // Cập nhật màu theo lượt lần đầu
-        }
-    }
-
-    /// <summary>
-    /// Tạo bàn cờ 15x15 (giữ nguyên từ develop)
-    /// </summary>
->>>>>>> feature/43-turn-indicator
     private void BuildBoard()
     {
-        if (_viewModel == null) return;
-
-        BoardGrid.Children.Clear();
         BoardGrid.RowDefinitions.Clear();
         BoardGrid.ColumnDefinitions.Clear();
+        BoardGrid.Children.Clear();
 
-        for (int i = 0; i < GameViewModel.BoardSize; i++)
+        for (var index = 0; index < GameViewModel.BoardSize; index++)
         {
-            BoardGrid.RowDefinitions.Add(new RowDefinition { Height = new GridLength(1, GridUnitType.Star) });
-            BoardGrid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
+            BoardGrid.RowDefinitions.Add(new RowDefinition());
+            BoardGrid.ColumnDefinitions.Add(new ColumnDefinition());
         }
 
-        for (int row = 0; row < GameViewModel.BoardSize; row++)
+        foreach (var cell in _viewModel.BoardCells)
         {
-            for (int col = 0; col < GameViewModel.BoardSize; col++)
+            var button = new Button
             {
-                var button = new Button
-                {
-                    Content = "",
-                    FontSize = 22,
-                    FontWeight = Microsoft.UI.Text.FontWeights.Bold,
-                    HorizontalAlignment = HorizontalAlignment.Stretch,
-                    VerticalAlignment = VerticalAlignment.Stretch,
-                    Margin = new Thickness(1),
-                    Tag = new BoardPosition(row, col)
-                };
+                DataContext = cell,
+                Style = (Style)Resources["BoardCellButtonStyle"],
+            };
 
-                button.Click += BoardButton_Click;
+            button.SetBinding(ContentControl.ContentProperty, new Binding
+            {
+                Path = new PropertyPath(nameof(BoardCellViewModel.Mark)),
+                Mode = BindingMode.OneWay,
+            });
+            button.Click += BoardCellButton_Click;
 
-                Grid.SetRow(button, row);
-                Grid.SetColumn(button, col);
-                BoardGrid.Children.Add(button);
-            }
+            Grid.SetRow(button, cell.Row);
+            Grid.SetColumn(button, cell.Column);
+            BoardGrid.Children.Add(button);
         }
     }
 
-<<<<<<< HEAD
     // Sự kiện người chơi click vào một ô trên bàn cờ để đánh X / O
     private async void BoardCellButton_Click(object sender, RoutedEventArgs e)
-=======
-    private async void BoardButton_Click(object sender, RoutedEventArgs e)
->>>>>>> feature/43-turn-indicator
     {
-        if (sender is Button button && button.Tag is BoardPosition position && _viewModel != null)
+        if (!_viewModel.IsMyTurn)
         {
-            await _viewModel.MakeMoveAsync(position.Row, position.Column);
+            return;
+        }
+
+        if (sender is Button { DataContext: BoardCellViewModel cell })
+        {
+            await _viewModel.MakeMoveAsync(cell.Row, cell.Column);
         }
     }
 
@@ -187,11 +153,9 @@ public sealed partial class GamePage : Page
 
     private void UpdateTurnUI()
     {
-        if (_viewModel == null) return;
-
         bool isMyTurn = _viewModel.IsMyTurn;
 
-        // === Đổi màu Banner ===
+        // Đổi màu banner theo lượt hiện tại.
         if (TurnBanner != null)
         {
             if (isMyTurn)
@@ -206,7 +170,7 @@ public sealed partial class GamePage : Page
             }
         }
 
-        // === Đổi màu viền bảng cờ ===
+        // Đổi màu viền bàn cờ theo lượt hiện tại.
         var boardBorder = BoardGrid?.Parent as Border;
         if (boardBorder != null)
         {
@@ -215,7 +179,7 @@ public sealed partial class GamePage : Page
                 : new SolidColorBrush(ColorHelper.FromArgb(255, 158, 158, 158));
         }
 
-        // === Bật/Tắt ô cờ ===
+        // Khóa ô cờ khi chưa tới lượt.
         if (BoardGrid != null)
         {
             foreach (var child in BoardGrid.Children)

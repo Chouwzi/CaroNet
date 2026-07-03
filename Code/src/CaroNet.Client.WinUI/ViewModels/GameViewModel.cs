@@ -96,10 +96,6 @@ public sealed class GameViewModel : INotifyPropertyChanged
     public event PropertyChangedEventHandler? PropertyChanged;
     public ObservableCollection<BoardCellViewModel> BoardCells { get; } = [];
 
-<<<<<<< HEAD
-
-=======
->>>>>>> feature/43-turn-indicator
     public void SetDispatcher(Action<Action> dispatcher)
     {
         _dispatchToUI = dispatcher;
@@ -141,14 +137,22 @@ public sealed class GameViewModel : INotifyPropertyChanged
         private set => SetProperty(ref _serverError, value);
     }
 
-    public bool IsMyTurn => CurrentTurnSymbol == PlayerSymbol && !string.IsNullOrEmpty(PlayerSymbol);
+    public bool IsMyTurn =>
+        !string.IsNullOrWhiteSpace(RoomId) &&
+        !string.IsNullOrWhiteSpace(PlayerSymbol) &&
+        PlayerSymbol != "?" &&
+        CurrentTurnSymbol == PlayerSymbol;
 
     public string TurnMessage
     {
         get
         {
-            if (string.IsNullOrEmpty(PlayerSymbol) || string.IsNullOrEmpty(RoomId))
+            if (string.IsNullOrWhiteSpace(RoomId) ||
+                string.IsNullOrWhiteSpace(PlayerSymbol) ||
+                PlayerSymbol == "?")
+            {
                 return "Đang chờ đối thủ...";
+            }
 
             return IsMyTurn
                 ? "🎯 Lượt của bạn!"
@@ -187,23 +191,7 @@ public sealed class GameViewModel : INotifyPropertyChanged
 
     private void GameClient_GameStateUpdated(object? sender, GameViewState state)
     {
-<<<<<<< HEAD
-        
         SafeExecuteOnUI(() => ApplyState(state));
-=======
-        if (_dispatchToUI is not null)
-        {
-            _dispatchToUI(() => ApplyState(state));
-        }
-        else if (_syncContext is not null)
-        {
-            _syncContext.Post(_ => ApplyState(state), null);
-        }
-        else
-        {
-            ApplyState(state);
-        }
->>>>>>> feature/43-turn-indicator
     }
 
     private void ApplyState(GameViewState state)
@@ -224,13 +212,10 @@ public sealed class GameViewModel : INotifyPropertyChanged
             }
         }
 
-<<<<<<< HEAD
         PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(IsChatInputEnabled)));
         PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(IsSendButtonEnabled)));
-=======
-        OnPropertyChanged(nameof(IsMyTurn));
-        OnPropertyChanged(nameof(TurnMessage));
->>>>>>> feature/43-turn-indicator
+        PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(IsMyTurn)));
+        PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(TurnMessage)));
     }
 
     private void SetProperty<T>(ref T field, T value, [CallerMemberName] string? propertyName = null)
@@ -244,7 +229,6 @@ public sealed class GameViewModel : INotifyPropertyChanged
         PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(propertyName));
     }
 
-<<<<<<< HEAD
     private void GameClient_ChatReceived(object? sender, CaroNet.Shared.Protocol.Payloads.ChatReceivedPayload payload)
     {
         // Khóa chặt việc nạp tin nhắn chat luôn luôn phải chạy trên luồng giao diện chính
@@ -254,11 +238,6 @@ public sealed class GameViewModel : INotifyPropertyChanged
     private void AddChatMessageToUI(CaroNet.Shared.Protocol.Payloads.ChatReceivedPayload payload)
     {
         ChatMessages.Add(new ChatMessageViewModel(payload.SenderName, payload.Message, payload.Timestamp));
-=======
-    private void OnPropertyChanged([CallerMemberName] string? propertyName = null)
-    {
-        PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(propertyName));
->>>>>>> feature/43-turn-indicator
     }
 }
 
