@@ -30,10 +30,25 @@ public sealed partial class GamePage : Page
         _viewModel.ChatMessages.CollectionChanged += ChatMessages_CollectionChanged;
         _viewModel.PropertyChanged += ViewModel_PropertyChanged;
 
+        Loaded += GamePage_Loaded;
+        Unloaded += GamePage_Unloaded;
+    }
+
+    private void GamePage_Loaded(object sender, RoutedEventArgs e)
+    {
+        // Chờ control trong XAML sẵn sàng rồi mới dựng bàn cờ.
         EmptyStateTextBlock.Visibility = Visibility.Visible;
 
         BuildBoard();
         UpdateTurnUI();
+    }
+
+    private void GamePage_Unloaded(object sender, RoutedEventArgs e)
+    {
+        Loaded -= GamePage_Loaded;
+        Unloaded -= GamePage_Unloaded;
+        _viewModel.ChatMessages.CollectionChanged -= ChatMessages_CollectionChanged;
+        _viewModel.PropertyChanged -= ViewModel_PropertyChanged;
     }
 
     private async void ViewModel_PropertyChanged(

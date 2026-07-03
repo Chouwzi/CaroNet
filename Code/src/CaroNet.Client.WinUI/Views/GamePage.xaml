@@ -48,7 +48,7 @@
                       ColumnSpacing="16">
 
                     <Border Grid.Column="0"
-                            BorderBrush="{ThemeResource SystemFillColorAccentBrush}"
+                            BorderBrush="{ThemeResource AccentFillColorDefaultBrush}"
                             BorderThickness="1"
                             CornerRadius="8"
                             Padding="14,10"
@@ -65,12 +65,12 @@
                                            FontSize="20"
                                            FontWeight="SemiBold"/>
                                 <TextBlock Text="{Binding PlayerSymbol}"
-                                           Foreground="{ThemeResource SystemFillColorAccentBrush}"
+                                           Foreground="{ThemeResource AccentFillColorDefaultBrush}"
                                            FontSize="20"
                                            FontWeight="Bold"/>
                             </StackPanel>
                             <TextBlock Text="{Binding MyTurnLabel}"
-                                       Foreground="{ThemeResource SystemFillColorAccentBrush}"
+                                       Foreground="{ThemeResource AccentFillColorDefaultBrush}"
                                        FontSize="12"
                                        FontWeight="SemiBold"/>
                         </StackPanel>
@@ -93,7 +93,7 @@
                     </StackPanel>
 
                     <Border Grid.Column="2"
-                            BorderBrush="{ThemeResource SystemFillColorAccentBrush}"
+                            BorderBrush="{ThemeResource AccentFillColorDefaultBrush}"
                             BorderThickness="1"
                             CornerRadius="8"
                             Padding="14,10"
@@ -109,7 +109,7 @@
                                         HorizontalAlignment="Right"
                                         Spacing="8">
                                 <TextBlock Text="{Binding OpponentSymbol}"
-                                           Foreground="{ThemeResource SystemFillColorAccentBrush}"
+                                           Foreground="{ThemeResource AccentFillColorDefaultBrush}"
                                            FontSize="20"
                                            FontWeight="Bold"/>
                                 <TextBlock Text="{Binding OpponentName}"
@@ -118,7 +118,7 @@
                                            FontWeight="SemiBold"/>
                             </StackPanel>
                             <TextBlock Text="{Binding OpponentTurnLabel}"
-                                       Foreground="{ThemeResource SystemFillColorAccentBrush}"
+                                       Foreground="{ThemeResource AccentFillColorDefaultBrush}"
                                        FontSize="12"
                                        FontWeight="SemiBold"
                                        HorizontalAlignment="Right"/>
@@ -265,12 +265,32 @@
                   BorderThickness="0">
                             <ListView.ItemTemplate>
                                 <DataTemplate>
-                                    <TextBlock TextWrapping="Wrap" Margin="0,3" FontSize="14">
-                        <Run Text="[" Foreground="{ThemeResource TextFillColorSecondaryBrush}"/>
-                        <Run Text="{Binding SenderName}" FontWeight="SemiBold" Foreground="{ThemeResource SystemFillColorAccentBrush}"/>
-                        <Run Text="]: " Foreground="{ThemeResource TextFillColorSecondaryBrush}"/>
-                        <Run Text="{Binding Message}"/>
-                                    </TextBlock>
+                                    <Grid Margin="0,3"
+                                          ColumnSpacing="0">
+                                        <Grid.ColumnDefinitions>
+                                            <ColumnDefinition Width="Auto"/>
+                                            <ColumnDefinition Width="Auto"/>
+                                            <ColumnDefinition Width="Auto"/>
+                                            <ColumnDefinition Width="*"/>
+                                        </Grid.ColumnDefinitions>
+                                        <TextBlock Text="["
+                                                   Grid.Column="0"
+                                                   Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                                                   FontSize="14"/>
+                                        <TextBlock Text="{Binding SenderName}"
+                                                   Grid.Column="1"
+                                                   FontWeight="SemiBold"
+                                                   Foreground="{ThemeResource AccentFillColorDefaultBrush}"
+                                                   FontSize="14"/>
+                                        <TextBlock Text="]: "
+                                                   Grid.Column="2"
+                                                   Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                                                   FontSize="14"/>
+                                        <TextBlock Text="{Binding Message}"
+                                                   Grid.Column="3"
+                                                   TextWrapping="WrapWholeWords"
+                                                   FontSize="14"/>
+                                    </Grid>
                                 </DataTemplate>
                             </ListView.ItemTemplate>
                         </ListView>
