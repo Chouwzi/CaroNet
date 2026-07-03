@@ -26,6 +26,7 @@ public sealed class GameViewModel : INotifyPropertyChanged
     private string _serverError = string.Empty;
     private bool _isGameEnded;
     private string _chatInputText = string.Empty;
+    private BoardPosition? _lastMovePosition;
 
     public ObservableCollection<ChatMessageViewModel> ChatMessages { get; } = [];
 
@@ -144,6 +145,12 @@ public sealed class GameViewModel : INotifyPropertyChanged
         private set => SetProperty(ref _isGameEnded, value);
     }
 
+    public BoardPosition? LastMovePosition
+    {
+        get => _lastMovePosition;
+        private set => SetProperty(ref _lastMovePosition, value);
+    }
+
     public bool IsMyTurn =>
         !string.IsNullOrWhiteSpace(RoomId) &&
         !string.IsNullOrWhiteSpace(PlayerSymbol) &&
@@ -208,6 +215,22 @@ public sealed class GameViewModel : INotifyPropertyChanged
 
     private void ApplyState(GameViewState state)
     {
+        BoardPosition? detectedLastMove = null;
+        var changedMoveCount = 0;
+
+        foreach (var cellState in state.Cells)
+        {
+            int index = cellState.Row * BoardSize + cellState.Column;
+            if (index >= 0 &&
+                index < BoardCells.Count &&
+                BoardCells[index].Mark != cellState.Mark &&
+                !string.IsNullOrEmpty(cellState.Mark))
+            {
+                detectedLastMove = new BoardPosition(cellState.Row, cellState.Column);
+                changedMoveCount++;
+            }
+        }
+
         RoomId = state.RoomId;
         PlayerName = state.PlayerName;
         PlayerSymbol = state.PlayerSymbol;
@@ -223,6 +246,7 @@ public sealed class GameViewModel : INotifyPropertyChanged
             {
                 cell.Mark = string.Empty;
                 cell.IsWinningCell = false;
+                cell.IsLastMove = false;
                 cell.IsInteractionEnabled = true;
             }
         }
@@ -253,6 +277,15 @@ public sealed class GameViewModel : INotifyPropertyChanged
             }
         }
 
+        LastMovePosition = changedMoveCount == 1 ? detectedLastMove : null;
+        foreach (var cell in BoardCells)
+        {
+            cell.IsLastMove =
+                LastMovePosition is { } lastMove &&
+                cell.Row == lastMove.Row &&
+                cell.Column == lastMove.Column;
+        }
+
         if (IsGameEnded || _connectionStatus == "Đang chờ đối thủ xác nhận...")
         {
             foreach (var cell in BoardCells)
@@ -281,6 +314,7 @@ public sealed class GameViewModel : INotifyPropertyChanged
         PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(IsSendButtonEnabled)));
         PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(IsMyTurn)));
         PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(TurnMessage)));
+        PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(LastMovePosition)));
     }
 
     private void SetProperty<T>(ref T field, T value, [CallerMemberName] string? propertyName = null)
@@ -307,6 +341,7 @@ public sealed class BoardCellViewModel : INotifyPropertyChanged
     private string _mark = string.Empty;
     private bool _isWinningCell;
     private bool _isInteractionEnabled = true;
+    private bool _isLastMove;
 
     public BoardCellViewModel(int row, int column)
     {
@@ -350,4 +385,18 @@ public sealed class BoardCellViewModel : INotifyPropertyChanged
             PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(IsInteractionEnabled)));
         }
     }
+
+    public bool IsLastMove
+    {
+        get => _isLastMove;
+        set
+        {
+            if (_isLastMove == value) return;
+            _isLastMove = value;
+            PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(IsLastMove)));
+            PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(LastMoveIndicatorOpacity)));
+        }
+    }
+
+    public double LastMoveIndicatorOpacity => IsLastMove ? 1.0 : 0.0;
 }
