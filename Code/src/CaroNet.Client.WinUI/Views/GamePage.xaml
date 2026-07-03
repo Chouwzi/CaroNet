@@ -36,72 +36,94 @@
               RowSpacing="10"
               ColumnSpacing="10">
 
-            <!-- Header -->
             <Border Grid.Row="0"
                     Grid.Column="0"
                     Grid.ColumnSpan="2"
                     Background="{ThemeResource CardBackgroundFillColorDefaultBrush}"
                     BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}"
                     BorderThickness="1"
-                    CornerRadius="18"
-                    Padding="24,0">
-                <Grid ColumnDefinitions="*,180,*">
+                    CornerRadius="8"
+                    Padding="18,0">
+                <Grid ColumnDefinitions="*,160,*"
+                      ColumnSpacing="16">
 
-                    <StackPanel Grid.Column="0"
-                                VerticalAlignment="Center"
-                                Spacing="2">
-                        <TextBlock Text="PLAYER"
-                                   Foreground="{ThemeResource TextFillColorSecondaryBrush}"
-                                   FontSize="12"
-                                   FontWeight="SemiBold"/>
-                        <TextBlock Text="{Binding PlayerName}"
-                                   Foreground="{ThemeResource TextFillColorPrimaryBrush}"
-                                   FontSize="20"
-                                   FontWeight="SemiBold"/>
-                        <TextBlock Text="{Binding ConnectionStatus}"
-                                   Foreground="{ThemeResource TextFillColorSecondaryBrush}"
-                                   FontSize="14"
-                                   FontWeight="SemiBold"/>
-                    </StackPanel>
+                    <Border Grid.Column="0"
+                            BorderBrush="{ThemeResource SystemFillColorAccentBrush}"
+                            BorderThickness="1"
+                            CornerRadius="8"
+                            Padding="14,10"
+                            Opacity="{Binding MyHeaderOpacity}">
+                        <StackPanel Spacing="2">
+                            <TextBlock Text="BẠN"
+                                       Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                                       FontSize="12"
+                                       FontWeight="SemiBold"/>
+                            <StackPanel Orientation="Horizontal"
+                                        Spacing="8">
+                                <TextBlock Text="{Binding PlayerName}"
+                                           Foreground="{ThemeResource TextFillColorPrimaryBrush}"
+                                           FontSize="20"
+                                           FontWeight="SemiBold"/>
+                                <TextBlock Text="{Binding PlayerSymbol}"
+                                           Foreground="{ThemeResource SystemFillColorAccentBrush}"
+                                           FontSize="20"
+                                           FontWeight="Bold"/>
+                            </StackPanel>
+                            <TextBlock Text="{Binding MyTurnLabel}"
+                                       Foreground="{ThemeResource SystemFillColorAccentBrush}"
+                                       FontSize="12"
+                                       FontWeight="SemiBold"/>
+                        </StackPanel>
+                    </Border>
 
                     <StackPanel Grid.Column="1"
-                                Orientation="Horizontal"
                                 HorizontalAlignment="Center"
                                 VerticalAlignment="Center"
-                                Spacing="18">
-                        <TextBlock Text="{Binding PlayerSymbol}"
+                                Spacing="2">
+                        <TextBlock Text="{Binding ScoreText}"
                                    Foreground="{ThemeResource TextFillColorPrimaryBrush}"
-                                   FontSize="30"
-                                   FontWeight="Bold"/>
-                        <TextBlock Text="/"
+                                   FontSize="34"
+                                   FontWeight="Bold"
+                                   HorizontalAlignment="Center"/>
+                        <TextBlock Text="{Binding RoomId}"
                                    Foreground="{ThemeResource TextFillColorSecondaryBrush}"
-                                   FontSize="26"
-                                   FontWeight="SemiBold"/>
-                        <TextBlock Text="{Binding CurrentTurnSymbol}"
-                                   Foreground="{ThemeResource TextFillColorPrimaryBrush}"
-                                   FontSize="30"
-                                   FontWeight="Bold"/>
+                                   FontSize="13"
+                                   FontWeight="SemiBold"
+                                   HorizontalAlignment="Center"/>
                     </StackPanel>
 
-                    <StackPanel Grid.Column="2"
-                                VerticalAlignment="Center"
-                                HorizontalAlignment="Right"
-                                Spacing="2">
-                        <TextBlock Text="ROOM"
-                                   Foreground="{ThemeResource TextFillColorSecondaryBrush}"
-                                   FontSize="12"
-                                   FontWeight="SemiBold"
-                                   HorizontalAlignment="Right"/>
-                        <TextBlock Text="{Binding RoomId}"
-                                   Foreground="{ThemeResource TextFillColorPrimaryBrush}"
-                                   FontSize="20"
-                                   FontWeight="SemiBold"/>
-                        <TextBlock Text="Server authoritative"
-                                   Foreground="{ThemeResource TextFillColorSecondaryBrush}"
-                                   FontSize="14"
-                                   FontWeight="SemiBold"
-                                   HorizontalAlignment="Right"/>
-                    </StackPanel>
+                    <Border Grid.Column="2"
+                            BorderBrush="{ThemeResource SystemFillColorAccentBrush}"
+                            BorderThickness="1"
+                            CornerRadius="8"
+                            Padding="14,10"
+                            Opacity="{Binding OpponentHeaderOpacity}">
+                        <StackPanel HorizontalAlignment="Right"
+                                    Spacing="2">
+                            <TextBlock Text="ĐỐI THỦ"
+                                       Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                                       FontSize="12"
+                                       FontWeight="SemiBold"
+                                       HorizontalAlignment="Right"/>
+                            <StackPanel Orientation="Horizontal"
+                                        HorizontalAlignment="Right"
+                                        Spacing="8">
+                                <TextBlock Text="{Binding OpponentSymbol}"
+                                           Foreground="{ThemeResource SystemFillColorAccentBrush}"
+                                           FontSize="20"
+                                           FontWeight="Bold"/>
+                                <TextBlock Text="{Binding OpponentName}"
+                                           Foreground="{ThemeResource TextFillColorPrimaryBrush}"
+                                           FontSize="20"
+                                           FontWeight="SemiBold"/>
+                            </StackPanel>
+                            <TextBlock Text="{Binding OpponentTurnLabel}"
+                                       Foreground="{ThemeResource SystemFillColorAccentBrush}"
+                                       FontSize="12"
+                                       FontWeight="SemiBold"
+                                       HorizontalAlignment="Right"/>
+                        </StackPanel>
+                    </Border>
                 </Grid>
             </Border>
 

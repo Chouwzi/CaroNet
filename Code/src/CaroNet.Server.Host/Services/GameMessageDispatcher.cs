@@ -392,6 +392,7 @@ public sealed class GameMessageDispatcher : IMessageDispatcher
                     {
                         roomId = room.RoomId,
                         yourSymbol = symbol?.ToString() ?? "",
+                        opponentName = GetOpponentName(room, player.Id),
                         board = gameState.Board,
                         currentTurnPlayerId = gameState.CurrentTurnPlayerId
                     })
@@ -518,6 +519,21 @@ public sealed class GameMessageDispatcher : IMessageDispatcher
             : "Player";
     }
 
+    private static string GetOpponentName(GameRoom room, Guid playerId)
+    {
+        if (room.PlayerX?.Id == playerId)
+        {
+            return room.PlayerOName ?? "Đối thủ";
+        }
+
+        if (room.PlayerO?.Id == playerId)
+        {
+            return room.PlayerXName ?? "Đối thủ";
+        }
+
+        return "Đối thủ";
+    }
+
     private async Task SaveMatchHistoryAsync(GameRoom room, GameStatus status)
     {
         if (_matchHistoryStore is null) return;
@@ -590,6 +606,7 @@ public sealed class GameMessageDispatcher : IMessageDispatcher
                         {
                             roomId = room.RoomId,
                             yourSymbol = symbol?.ToString() ?? "",
+                            opponentName = GetOpponentName(room, player.Id),
                             board = gameState.Board,
                             currentTurnPlayerId = gameState.CurrentTurnPlayerId
                         })
