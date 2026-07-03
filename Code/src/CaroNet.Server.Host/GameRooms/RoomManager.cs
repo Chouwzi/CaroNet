@@ -10,6 +10,17 @@ public sealed class RoomManager
 
     private readonly ConcurrentDictionary<string, GameRoom> _rooms = new();
     private readonly ConcurrentDictionary<Guid, string> _sessionRoomMap = new();
+    private readonly Func<GameRoom> _roomFactory;
+
+    public RoomManager()
+        : this(() => new GameRoom())
+    {
+    }
+
+    public RoomManager(Func<GameRoom> roomFactory)
+    {
+        _roomFactory = roomFactory;
+    }
 
     public int RoomCount => _rooms.Count;
 
@@ -23,7 +34,7 @@ public sealed class RoomManager
         if (_rooms.Count >= MaxRooms)
             return null;
 
-        var room = new GameRoom();
+        var room = _roomFactory();
 
         if (!_rooms.TryAdd(room.RoomId, room))
             return null;

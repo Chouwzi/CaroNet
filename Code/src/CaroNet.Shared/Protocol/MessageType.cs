@@ -12,6 +12,10 @@ public enum MessageType
     Heartbeat = 7,
     Reconnect = 8,
     Rematch = 9,
+    Resign = 10,
+    DrawOffer = 11,
+    DrawResponse = 12,
+    LeaveRoom = 13,
 
     // Server -> Client
     HelloAccepted = 50,

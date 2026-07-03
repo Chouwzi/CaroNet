@@ -83,6 +83,22 @@ public sealed class GameMessageDispatcher : IMessageDispatcher
                 await HandleRematchAsync(session, message, cancellationToken);
                 break;
 
+            case MessageType.Resign:
+                await HandleResignAsync(session, cancellationToken);
+                break;
+
+            case MessageType.DrawOffer:
+                await HandleDrawOfferAsync(session, cancellationToken);
+                break;
+
+            case MessageType.DrawResponse:
+                await HandleDrawResponseAsync(session, message, cancellationToken);
+                break;
+
+            case MessageType.LeaveRoom:
+                await HandleLeaveRoomAsync(session, cancellationToken);
+                break;
+
             case MessageType.Chat:
                 await HandleChatAsync(session, message, cancellationToken);
                 break;
@@ -104,6 +120,13 @@ public sealed class GameMessageDispatcher : IMessageDispatcher
         if (room is null) return;
 
         room.StopRematchTimeout();
+        room.StopTurnTimeout();
+
+        if (room.GameState.Status != GameStatus.Playing)
+        {
+            await NotifyOpponentLeftAfterGameEndedAsync(room);
+            return;
+        }
 
         // Báo cho người còn lại biết đối thủ đã thoát.
         foreach (var player in room.GetPlayers())
@@ -134,6 +157,34 @@ public sealed class GameMessageDispatcher : IMessageDispatcher
             {
                 Console.WriteLine(
                     $"[DISCONNECT] Failed to notify player {player.Id}: {ex.Message}");
+            }
+        }
+    }
+
+    private static async Task NotifyOpponentLeftAfterGameEndedAsync(GameRoom room)
+    {
+        foreach (var player in room.GetPlayers())
+        {
+            try
+            {
+                await player.SendAsync(
+                    new MessageEnvelope
+                    {
+                        Type = MessageType.ChatReceived,
+                        RoomId = room.RoomId,
+                        Payload = JsonSerializer.SerializeToElement(new ChatReceivedPayload
+                        {
+                            SenderName = "Hệ thống",
+                            Message = "Đối thủ đã rời phòng sau khi ván đấu kết thúc.",
+                            Timestamp = DateTime.Now
+                        })
+                    },
+                    CancellationToken.None);
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine(
+                    $"[DISCONNECT] Failed to notify ended room player {player.Id}: {ex.Message}");
             }
         }
     }
@@ -263,6 +314,7 @@ public sealed class GameMessageDispatcher : IMessageDispatcher
         if (room.IsFull)
         {
             await BroadcastGameStartedAsync(room, cancellationToken);
+            StartTurnTimeout(room);
         }
     }
 
@@ -331,9 +383,14 @@ public sealed class GameMessageDispatcher : IMessageDispatcher
 
         if (result.Status != GameStatus.Playing)
         {
+            room.StopTurnTimeout();
             // TRUYỀN THÊM row VÀ col VÀO ĐỂ KHÔNG BỊ LỖI THUỘC TÍNH
             await BroadcastGameEndedAsync(room, result.Status, row, col, cancellationToken);
             await SaveMatchHistoryAsync(room, result.Status);
+        }
+        else
+        {
+            room.ResetTurnTimeout();
         }
     }
 
@@ -364,6 +421,7 @@ public sealed class GameMessageDispatcher : IMessageDispatcher
             // 4. Tạo Payload phát sóng chuẩn ChatReceivedPayload
             var broadcastPayload = new ChatReceivedPayload
             {
+                SenderPlayerId = session.Id.ToString(),
                 SenderName = senderName,
                 Message = processedMessage,
                 Timestamp = DateTime.Now
@@ -394,6 +452,142 @@ public sealed class GameMessageDispatcher : IMessageDispatcher
         {
             Console.WriteLine($"[CHAT ERROR] {session.Id}: {ex.Message}");
         }
+    }
+
+    private async Task HandleResignAsync(
+        ClientSession session,
+        CancellationToken cancellationToken)
+    {
+        GameRoom? room = _roomManager.GetRoomBySession(session.Id);
+        if (room is null)
+        {
+            await SendErrorAsync(session, "Bạn chưa vào phòng nào.", cancellationToken);
+            return;
+        }
+
+        var result = room.HandleResign(session.Id);
+        if (!result.Success)
+        {
+            await SendErrorAsync(session, "Không thể đầu hàng lúc này.", cancellationToken);
+            return;
+        }
+
+        await BroadcastGameEndedAsync(room, result.Status, "resigned", cancellationToken);
+        await SaveMatchHistoryAsync(room, result.Status);
+    }
+
+    private async Task HandleDrawOfferAsync(
+        ClientSession session,
+        CancellationToken cancellationToken)
+    {
+        GameRoom? room = _roomManager.GetRoomBySession(session.Id);
+        if (room is null)
+        {
+            await SendErrorAsync(session, "Bạn chưa vào phòng nào.", cancellationToken);
+            return;
+        }
+
+        var result = room.HandleDrawOffer(session.Id);
+        if (!result.Success || result.TargetPlayer is null)
+        {
+            await SendErrorAsync(session, "Không thể xin hòa lúc này.", cancellationToken);
+            return;
+        }
+
+        await result.TargetPlayer.SendAsync(new MessageEnvelope
+        {
+            Type = MessageType.DrawOffer,
+            RoomId = room.RoomId,
+            Payload = JsonSerializer.SerializeToElement(new
+            {
+                senderPlayerId = session.Id.ToString(),
+                senderName = GetPlayerName(session.Id)
+            })
+        }, cancellationToken);
+    }
+
+    private async Task HandleDrawResponseAsync(
+        ClientSession session,
+        MessageEnvelope message,
+        CancellationToken cancellationToken)
+    {
+        GameRoom? room = _roomManager.GetRoomBySession(session.Id);
+        if (room is null)
+        {
+            await SendErrorAsync(session, "Bạn chưa vào phòng nào.", cancellationToken);
+            return;
+        }
+
+        bool accepted = false;
+        if (message.Payload.HasValue)
+        {
+            try
+            {
+                accepted = message.Payload.Value.Deserialize<DrawResponsePayload>()?.Accepted ?? false;
+            }
+            catch
+            {
+                await SendErrorAsync(session, "Phản hồi hòa không hợp lệ.", cancellationToken);
+                return;
+            }
+        }
+
+        var result = room.HandleDrawResponse(session.Id, accepted);
+        if (!result.Success)
+        {
+            await SendErrorAsync(session, "Không có lời xin hòa hợp lệ.", cancellationToken);
+            return;
+        }
+
+        if (result.GameEnded)
+        {
+            await BroadcastGameEndedAsync(room, GameStatus.Draw, "draw_agreed", cancellationToken);
+            await SaveMatchHistoryAsync(room, GameStatus.Draw);
+            return;
+        }
+
+        if (result.OfferSender is not null)
+        {
+            await result.OfferSender.SendAsync(new MessageEnvelope
+            {
+                Type = MessageType.ChatReceived,
+                RoomId = room.RoomId,
+                Payload = JsonSerializer.SerializeToElement(new ChatReceivedPayload
+                {
+                    SenderName = "Hệ thống",
+                    Message = "Đối thủ đã từ chối hòa.",
+                    Timestamp = DateTime.Now
+                })
+            }, cancellationToken);
+        }
+    }
+
+    private async Task HandleLeaveRoomAsync(
+        ClientSession session,
+        CancellationToken cancellationToken)
+    {
+        GameRoom? room = _roomManager.GetRoomBySession(session.Id);
+        if (room is null)
+        {
+            return;
+        }
+
+        if (room.IsFull && room.GameState.Status == GameStatus.Playing)
+        {
+            var result = room.HandleResign(session.Id);
+            if (result.Success)
+            {
+                await BroadcastGameEndedAsync(
+                    room,
+                    result.Status,
+                    "resigned",
+                    cancellationToken,
+                    excludedPlayerId: session.Id);
+                await SaveMatchHistoryAsync(room, result.Status);
+            }
+        }
+
+        await HandleDisconnectAsync(session.Id);
     }
 
     private async Task BroadcastGameStartedAsync(
@@ -427,6 +621,15 @@ public sealed class GameMessageDispatcher : IMessageDispatcher
                     $"[BROADCAST ERROR] {player.Id}: {ex.Message}");
             }
         }
+    }
+
+    private void StartTurnTimeout(GameRoom room)
+    {
+        room.StartTurnTimeout(async (timedOutRoom, status) =>
+        {
+            await BroadcastGameEndedAsync(timedOutRoom, status, "timeout", CancellationToken.None);
+            await SaveMatchHistoryAsync(timedOutRoom, status);
+        });
     }
 
     private async Task BroadcastGameStateAsync(
@@ -501,6 +704,51 @@ public sealed class GameMessageDispatcher : IMessageDispatcher
             }
         }
     }
+
+    private async Task BroadcastGameEndedAsync(
+        GameRoom room,
+        GameStatus status,
+        string reason,
+        CancellationToken cancellationToken,
+        Guid? excludedPlayerId = null)
+    {
+        string? winnerId = status switch
+        {
+            GameStatus.XWon => room.PlayerX?.Id.ToString(),
+            GameStatus.OWon => room.PlayerO?.Id.ToString(),
+            _ => null
+        };
+
+        var envelope = new MessageEnvelope
+        {
+            Type = MessageType.GameEnded,
+            RoomId = room.RoomId,
+            Payload = JsonSerializer.SerializeToElement(new GameEndedPayload
+            {
+                WinnerPlayerId = winnerId,
+                Reason = reason,
+                Board = room.BuildBoardPayload()
+            })
+        };
+
+        foreach (var player in room.GetPlayers())
+        {
+            if (excludedPlayerId.HasValue && player.Id == excludedPlayerId.Value)
+            {
+                continue;
+            }
+
+            try
+            {
+                await player.SendAsync(envelope, cancellationToken);
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine($"[BROADCAST ERROR] {player.Id}: {ex.Message}");
+            }
+        }
+    }
+
     private GameStatePayload BuildGameStatePayload(GameRoom room)
     {
         string currentTurnId = room.GameState.CurrentPlayer == PlayerSymbol.X
@@ -702,6 +950,8 @@ public sealed class GameMessageDispatcher : IMessageDispatcher
                     Console.WriteLine($"[REMATCH BROADCAST ERROR] {player.Id}: {ex.Message}");
                 }
             }
+
+            StartTurnTimeout(room);
         }
         else
         {
@@ -723,4 +973,3 @@ public sealed class GameMessageDispatcher : IMessageDispatcher
         }
     }
 }
-

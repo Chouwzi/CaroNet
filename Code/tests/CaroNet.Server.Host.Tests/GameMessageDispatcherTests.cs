@@ -147,6 +147,49 @@ namespace CaroNet.Server.Host.Tests
         }
 
         [Fact]
+        public async Task DispatchAsync_LeaveRoom_WhenAlone_RemovesRoomFromServer()
+        {
+            var roomManager = new RoomManager();
+            var dispatcher = new GameMessageDispatcher(
+                roomManager,
+                new ClientSessionRegistry());
+            using var alice = SocketPair.Create(dispatcher);
+
+            await dispatcher.DispatchAsync(
+                alice.ServerSession,
+                new MessageEnvelope
+                {
+                    Type = MessageType.Hello,
+                    Payload = JsonSerializer.SerializeToElement(new { playerName = "Alice" })
+                },
+                CancellationToken.None);
+
+            await dispatcher.DispatchAsync(
+                alice.ServerSession,
+                new MessageEnvelope
+                {
+                    Type = MessageType.CreateRoom
+                },
+                CancellationToken.None);
+
+            Assert.Equal(MessageType.HelloAccepted, alice.ReceiveEnvelope().Type);
+            Assert.Equal(MessageType.RoomJoined, alice.ReceiveEnvelope().Type);
+            Assert.Equal(1, roomManager.RoomCount);
+
+            await Task.Delay(150);
+            await dispatcher.DispatchAsync(
+                alice.ServerSession,
+                new MessageEnvelope
+                {
+                    Type = MessageType.LeaveRoom
+                },
+                CancellationToken.None);
+
+            Assert.Equal(0, roomManager.RoomCount);
+            Assert.Null(roomManager.GetRoomBySession(alice.ServerSession.Id));
+        }
+
+        [Fact]
         public async Task SaveMatchHistoryAsync_ShouldUpdatePlayerRecords_WhenGameEnds()
         {
             var store = new InMemoryPlayerRecordStore();
@@ -169,6 +212,221 @@ namespace CaroNet.Server.Host.Tests
 
             Assert.Equal(new PlayerRecord("Alice", 1, 0, 1), alice);
             Assert.Equal(new PlayerRecord("Bob", 0, 1, 1), bob);
+        }
+
+        [Fact]
+        public async Task DispatchAsync_Resign_EndsGameWithOpponentAsWinnerAndUpdatesRecords()
+        {
+            var store = new InMemoryPlayerRecordStore();
+            var dispatcher = new GameMessageDispatcher(
+                new RoomManager(),
+                new ClientSessionRegistry(),
+                playerRecordStore: store);
+
+            using var alice = SocketPair.Create(dispatcher);
+            using var bob = SocketPair.Create(dispatcher);
+
+            await JoinTwoPlayersAsync(dispatcher, alice, bob);
+            await Task.Delay(150);
+
+            await dispatcher.DispatchAsync(
+                alice.ServerSession,
+                new MessageEnvelope
+                {
+                    Type = MessageType.Resign
+                },
+                CancellationToken.None);
+
+            MessageEnvelope aliceEnded = alice.ReceiveEnvelope();
+            MessageEnvelope bobEnded = bob.ReceiveEnvelope();
+
+            Assert.Equal(MessageType.GameEnded, aliceEnded.Type);
+            Assert.Equal(MessageType.GameEnded, bobEnded.Type);
+            Assert.Equal(bob.ServerSession.Id.ToString(), GetPayloadString(aliceEnded, "winnerPlayerId"));
+            Assert.Equal("resigned", GetPayloadString(aliceEnded, "reason"));
+
+            Assert.Equal(new PlayerRecord("Alice", 0, 1, 0), await store.GetAsync("Alice"));
+            Assert.Equal(new PlayerRecord("Bob", 1, 0, 0), await store.GetAsync("Bob"));
+        }
+
+        [Fact]
+        public async Task DispatchAsync_DrawOffer_SendsOfferOnlyToOpponent()
+        {
+            var dispatcher = new GameMessageDispatcher(
+                new RoomManager(),
+                new ClientSessionRegistry());
+
+            using var alice = SocketPair.Create(dispatcher);
+            using var bob = SocketPair.Create(dispatcher);
+
+            await JoinTwoPlayersAsync(dispatcher, alice, bob);
+            await Task.Delay(150);
+
+            await dispatcher.DispatchAsync(
+                alice.ServerSession,
+                new MessageEnvelope
+                {
+                    Type = MessageType.DrawOffer
+                },
+                CancellationToken.None);
+
+            MessageEnvelope offer = bob.ReceiveEnvelope();
+
+            Assert.Equal(MessageType.DrawOffer, offer.Type);
+            Assert.Equal(alice.ServerSession.Id.ToString(), GetPayloadString(offer, "senderPlayerId"));
+            Assert.Equal("Alice", GetPayloadString(offer, "senderName"));
+            Assert.Equal(0, alice.ClientAvailable);
+        }
+
+        [Fact]
+        public async Task DispatchAsync_DrawResponseAccepted_EndsGameAsDraw()
+        {
+            var dispatcher = new GameMessageDispatcher(
+                new RoomManager(),
+                new ClientSessionRegistry());
+
+            using var alice = SocketPair.Create(dispatcher);
+            using var bob = SocketPair.Create(dispatcher);
+
+            await JoinTwoPlayersAsync(dispatcher, alice, bob);
+            await Task.Delay(150);
+
+            await dispatcher.DispatchAsync(
+                alice.ServerSession,
+                new MessageEnvelope
+                {
+                    Type = MessageType.DrawOffer
+                },
+                CancellationToken.None);
+
+            Assert.Equal(MessageType.DrawOffer, bob.ReceiveEnvelope().Type);
+            await Task.Delay(150);
+
+            await dispatcher.DispatchAsync(
+                bob.ServerSession,
+                new MessageEnvelope
+                {
+                    Type = MessageType.DrawResponse,
+                    Payload = JsonSerializer.SerializeToElement(new { accepted = true })
+                },
+                CancellationToken.None);
+
+            MessageEnvelope aliceEnded = alice.ReceiveEnvelope();
+            MessageEnvelope bobEnded = bob.ReceiveEnvelope();
+
+            Assert.Equal(MessageType.GameEnded, aliceEnded.Type);
+            Assert.Equal(MessageType.GameEnded, bobEnded.Type);
+            Assert.Equal("draw_agreed", GetPayloadString(aliceEnded, "reason"));
+            Assert.True(string.IsNullOrEmpty(GetPayloadString(aliceEnded, "winnerPlayerId")));
+        }
+
+        [Fact]
+        public async Task HandleDisconnectAsync_AfterGameAlreadyEnded_DoesNotAwardOpponentWin()
+        {
+            var roomManager = new RoomManager();
+            var dispatcher = new GameMessageDispatcher(
+                roomManager,
+                new ClientSessionRegistry());
+
+            using var alice = SocketPair.Create(dispatcher);
+            using var bob = SocketPair.Create(dispatcher);
+
+            await JoinTwoPlayersAsync(dispatcher, alice, bob);
+            await Task.Delay(150);
+
+            await dispatcher.DispatchAsync(
+                alice.ServerSession,
+                new MessageEnvelope
+                {
+                    Type = MessageType.DrawOffer
+                },
+                CancellationToken.None);
+
+            Assert.Equal(MessageType.DrawOffer, bob.ReceiveEnvelope().Type);
+            await Task.Delay(150);
+
+            await dispatcher.DispatchAsync(
+                bob.ServerSession,
+                new MessageEnvelope
+                {
+                    Type = MessageType.DrawResponse,
+                    Payload = JsonSerializer.SerializeToElement(new { accepted = true })
+                },
+                CancellationToken.None);
+
+            Assert.Equal(MessageType.GameEnded, alice.ReceiveEnvelope().Type);
+            Assert.Equal(MessageType.GameEnded, bob.ReceiveEnvelope().Type);
+
+            await dispatcher.HandleDisconnectAsync(alice.ServerSession.Id);
+
+            MessageEnvelope notification = bob.ReceiveEnvelope();
+
+            Assert.Equal(MessageType.ChatReceived, notification.Type);
+            Assert.Contains("rời phòng", GetPayloadString(notification, "message"));
+            Assert.NotEqual("opponent_disconnected", GetPayloadString(notification, "reason"));
+            Assert.True(string.IsNullOrEmpty(GetPayloadString(notification, "winnerPlayerId")));
+        }
+
+        [Fact]
+        public async Task DispatchAsync_DrawResponseDeclined_NotifiesOfferSenderWithoutEndingGame()
+        {
+            var dispatcher = new GameMessageDispatcher(
+                new RoomManager(),
+                new ClientSessionRegistry());
+
+            using var alice = SocketPair.Create(dispatcher);
+            using var bob = SocketPair.Create(dispatcher);
+
+            await JoinTwoPlayersAsync(dispatcher, alice, bob);
+            await Task.Delay(150);
+
+            await dispatcher.DispatchAsync(
+                alice.ServerSession,
+                new MessageEnvelope
+                {
+                    Type = MessageType.DrawOffer
+                },
+                CancellationToken.None);
+
+            Assert.Equal(MessageType.DrawOffer, bob.ReceiveEnvelope().Type);
+            await Task.Delay(150);
+
+            await dispatcher.DispatchAsync(
+                bob.ServerSession,
+                new MessageEnvelope
+                {
+                    Type = MessageType.DrawResponse,
+                    Payload = JsonSerializer.SerializeToElement(new { accepted = false })
+                },
+                CancellationToken.None);
+
+            MessageEnvelope notification = alice.ReceiveEnvelope();
+
+            Assert.Equal(MessageType.ChatReceived, notification.Type);
+            Assert.Contains("từ chối hòa", GetPayloadString(notification, "message"));
+            Assert.Equal(0, bob.ClientAvailable);
+        }
+
+        [Fact]
+        public async Task TurnTimeout_BroadcastsGameEndedWithOpponentAsWinner()
+        {
+            var dispatcher = new GameMessageDispatcher(
+                new RoomManager(() => new GameRoom(TimeSpan.FromMilliseconds(40))),
+                new ClientSessionRegistry());
+
+            using var alice = SocketPair.Create(dispatcher);
+            using var bob = SocketPair.Create(dispatcher);
+
+            await JoinTwoPlayersAsync(dispatcher, alice, bob);
+            await Task.Delay(160);
+
+            MessageEnvelope aliceEnded = alice.ReceiveEnvelope();
+            MessageEnvelope bobEnded = bob.ReceiveEnvelope();
+
+            Assert.Equal(MessageType.GameEnded, aliceEnded.Type);
+            Assert.Equal(MessageType.GameEnded, bobEnded.Type);
+            Assert.Equal("timeout", GetPayloadString(aliceEnded, "reason"));
+            Assert.Equal(bob.ServerSession.Id.ToString(), GetPayloadString(aliceEnded, "winnerPlayerId"));
         }
 
         [Fact]
@@ -215,6 +473,75 @@ namespace CaroNet.Server.Host.Tests
 
             var task = (Task)method.Invoke(dispatcher, [room, status])!;
             await task;
+        }
+
+        private static async Task<string> JoinTwoPlayersAsync(
+            GameMessageDispatcher dispatcher,
+            SocketPair alice,
+            SocketPair bob)
+        {
+            await dispatcher.DispatchAsync(
+                alice.ServerSession,
+                new MessageEnvelope
+                {
+                    Type = MessageType.Hello,
+                    Payload = JsonSerializer.SerializeToElement(new { playerName = "Alice" })
+                },
+                CancellationToken.None);
+
+            await dispatcher.DispatchAsync(
+                alice.ServerSession,
+                new MessageEnvelope
+                {
+                    Type = MessageType.CreateRoom
+                },
+                CancellationToken.None);
+
+            Assert.Equal(MessageType.HelloAccepted, alice.ReceiveEnvelope().Type);
+            MessageEnvelope roomJoined = alice.ReceiveEnvelope();
+            string roomId = roomJoined.RoomId!;
+
+            await dispatcher.DispatchAsync(
+                bob.ServerSession,
+                new MessageEnvelope
+                {
+                    Type = MessageType.Hello,
+                    Payload = JsonSerializer.SerializeToElement(new { playerName = "Bob" })
+                },
+                CancellationToken.None);
+
+            await dispatcher.DispatchAsync(
+                bob.ServerSession,
+                new MessageEnvelope
+                {
+                    Type = MessageType.JoinRoom,
+                    RoomId = roomId,
+                    Payload = JsonSerializer.SerializeToElement(new { roomId })
+                },
+                CancellationToken.None);
+
+            Assert.Equal(MessageType.HelloAccepted, bob.ReceiveEnvelope().Type);
+            Assert.Equal(MessageType.RoomJoined, bob.ReceiveEnvelope().Type);
+            Assert.Equal(MessageType.GameStarted, alice.ReceiveEnvelope().Type);
+            Assert.Equal(MessageType.GameStarted, bob.ReceiveEnvelope().Type);
+
+            return roomId;
+        }
+
+        private static string GetPayloadString(MessageEnvelope envelope, string propertyName)
+        {
+            if (!envelope.Payload.HasValue ||
+                !envelope.Payload.Value.TryGetProperty(propertyName, out JsonElement property))
+            {
+                return string.Empty;
+            }
+
+            return property.ValueKind switch
+            {
+                JsonValueKind.String => property.GetString() ?? string.Empty,
+                JsonValueKind.Null => string.Empty,
+                _ => property.GetRawText()
+            };
         }
 
         public void Dispose()
@@ -329,6 +656,8 @@ namespace CaroNet.Server.Host.Tests
 
             public ClientSession ServerSession { get; }
 
+            public int ClientAvailable => _clientSocket.Available;
+
             public static SocketPair Create(GameMessageDispatcher dispatcher)
             {
                 var listener = new Socket(AddressFamily.InterNetwork, SocketType.Stream, ProtocolType.Tcp);
@@ -345,6 +674,34 @@ namespace CaroNet.Server.Host.Tests
                     clientSocket,
                     serverSocket,
                     new ClientSession(serverSocket, dispatcher));
+            }
+
+            public MessageEnvelope ReceiveEnvelope()
+            {
+                var lengthBuffer = new byte[4];
+                ReceiveExact(lengthBuffer);
+
+                int payloadLength = System.Buffers.Binary.BinaryPrimitives.ReadInt32BigEndian(lengthBuffer);
+                var frame = new byte[4 + payloadLength];
+                lengthBuffer.CopyTo(frame, 0);
+                ReceiveExact(frame.AsSpan(4));
+
+                return ProtocolFrameCodec.Decode(frame);
+            }
+
+            private void ReceiveExact(Span<byte> buffer)
+            {
+                int offset = 0;
+                while (offset < buffer.Length)
+                {
+                    int received = _clientSocket.Receive(buffer[offset..]);
+                    if (received == 0)
+                    {
+                        throw new InvalidOperationException("Socket closed while reading test frame.");
+                    }
+
+                    offset += received;
+                }
             }
 
             public void Dispose()
