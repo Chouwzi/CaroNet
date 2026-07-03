@@ -21,7 +21,8 @@ internal static class SqliteConnectionFactory
 
         var builder = new SqliteConnectionStringBuilder
         {
-            DataSource = fullPath
+            DataSource = fullPath,
+            DefaultTimeout = 5
         };
 
         return builder.ToString();
