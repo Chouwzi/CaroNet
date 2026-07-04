@@ -280,7 +280,7 @@ dotnet test .\Code\CaroNet.slnx --configuration Debug -p:Platform=x64 --no-build
 | --- | --- |
 | Nguyễn Trần Đình Chương (@Chouwzi) | Leader, kiến trúc tổng thể, CI/CD, review, hardening, auth/quick match/history/ranking |
 | Nguyễn Đức Thành (@NguyenDucThanh123) | Protocol, server infra, disconnect, turn timer |
-| Bao Nguyễn Trường (@Baong123) | SQLite storage, lịch sử trận đấu, thống kê |
+| Nguyễn Trường Bảo (@Baong123) | SQLite storage, lịch sử trận đấu, thống kê |
 | Nguyễn Hoàng Phúc (@phucnh8317-coder) | Client socket, chat, cấu hình client |
 | Nguyễn Duy Tân (@tannd2333) | UI menu, game board, turn indicator |
 | Trọng Nhân (@TrongNhan0510) | Rule engine, dialog kết quả, rematch, highlight thắng |
