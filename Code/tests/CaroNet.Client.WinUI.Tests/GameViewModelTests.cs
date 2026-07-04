@@ -1,3 +1,4 @@
+using CaroNet.Client.WinUI.Models;
 using CaroNet.Client.WinUI.Services;
 using CaroNet.Client.WinUI.ViewModels;
 using CaroNet.Shared.Game;
@@ -357,6 +358,25 @@ public sealed class GameViewModelTests
             string.Empty,
             []);
 
+        public AuthSession? CurrentAuth => null;
+
+        public Task<AuthSession> RegisterAsync(
+            string username,
+            string password,
+            string displayName,
+            CancellationToken cancellationToken)
+        {
+            return Task.FromResult(new AuthSession("user-id", username, displayName));
+        }
+
+        public Task<AuthSession> LoginAsync(
+            string username,
+            string password,
+            CancellationToken cancellationToken)
+        {
+            return Task.FromResult(new AuthSession("user-id", username, username));
+        }
+
         public Task ConnectAsync(
             ConnectionRequest request,
             CancellationToken cancellationToken) => Task.CompletedTask;
@@ -367,6 +387,23 @@ public sealed class GameViewModelTests
         public Task<GameViewState> JoinRoomAsync(
             string roomId,
             CancellationToken cancellationToken) => Task.FromResult(CurrentState);
+
+        public Task<GameViewState> QuickMatchAsync(
+            CancellationToken cancellationToken) => Task.FromResult(CurrentState);
+
+        public Task<IReadOnlyList<MatchSummary>> GetMyHistoryAsync(
+            CancellationToken cancellationToken)
+        {
+            IReadOnlyList<MatchSummary> matches = [];
+            return Task.FromResult(matches);
+        }
+
+        public Task<IReadOnlyList<PlayerRecordSummary>> GetTopRecordsAsync(
+            CancellationToken cancellationToken)
+        {
+            IReadOnlyList<PlayerRecordSummary> records = [];
+            return Task.FromResult(records);
+        }
 
         public Task MakeMoveAsync(
             BoardPosition position,

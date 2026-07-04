@@ -105,6 +105,30 @@ public sealed class InMemoryMatchHistoryStoreTests
         Assert.Equal("ALICE", matches[0].RoomId);
     }
 
+    [Fact]
+    public async Task GetMatchesByUserIdAsync_returns_only_matches_for_that_user()
+    {
+        var store = new InMemoryMatchHistoryStore();
+        Guid aliceUserId = Guid.NewGuid();
+        Guid bobUserId = Guid.NewGuid();
+        MatchRecord aliceMatch = CreateCompletedMatch("ALICE", DateTime.UtcNow)
+            with
+            {
+                PlayerXUserId = aliceUserId,
+                PlayerOUserId = bobUserId,
+                WinnerUserId = aliceUserId
+            };
+        MatchRecord legacyMatch = CreateCompletedMatch("LEGACY", DateTime.UtcNow);
+
+        await store.SaveMatchAsync(aliceMatch);
+        await store.SaveMatchAsync(legacyMatch);
+
+        IReadOnlyList<MatchRecord> matches = await store.GetMatchesByUserIdAsync(aliceUserId);
+
+        Assert.Single(matches);
+        Assert.Equal("ALICE", matches[0].RoomId);
+    }
+
     private static MatchRecord CreateCompletedMatch(string roomId, DateTime endedAtUtc)
     {
         return new MatchRecord(

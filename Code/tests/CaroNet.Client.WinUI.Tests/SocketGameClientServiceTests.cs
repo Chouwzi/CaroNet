@@ -1,4 +1,5 @@
 using System.Text.Json;
+using CaroNet.Client.WinUI.Models;
 using CaroNet.Client.WinUI.Services;
 using CaroNet.Client.WinUI.ViewModels;
 using CaroNet.Shared.Game;
@@ -8,6 +9,43 @@ namespace CaroNet.Client.WinUI.Tests;
 
 public sealed class SocketGameClientServiceTests
 {
+    [Fact]
+    public async Task RegisterAsync_sends_request_and_updates_auth_session()
+    {
+        var connection = new FakeClientConnection();
+        var service = new SocketGameClientService(connection);
+
+        Task<AuthSession> registerTask = service.RegisterAsync(
+            "alice",
+            "1234",
+            "Alice",
+            new CancellationTokenSource(TimeSpan.FromSeconds(2)).Token);
+
+        MessageEnvelope register = connection.SentMessages.Last();
+
+        Assert.Equal(MessageType.Register, register.Type);
+        Assert.Equal("alice", register.Payload!.Value.GetProperty("username").GetString());
+        Assert.Equal("Alice", register.Payload.Value.GetProperty("displayName").GetString());
+
+        connection.RaiseMessage(new MessageEnvelope
+        {
+            Type = MessageType.AuthAccepted,
+            PlayerId = "session-id",
+            Payload = JsonSerializer.SerializeToElement(new
+            {
+                userId = "user-id",
+                username = "alice",
+                displayName = "Alice"
+            })
+        });
+
+        AuthSession session = await registerTask.WaitAsync(TimeSpan.FromSeconds(2));
+
+        Assert.Equal("user-id", session.UserId);
+        Assert.Equal("Alice", service.CurrentState.PlayerName);
+        Assert.Equal(session, service.CurrentAuth);
+    }
+
     [Fact]
     public async Task CreateRoomAsync_sends_request_and_returns_room_joined_state()
     {
@@ -41,6 +79,113 @@ public sealed class SocketGameClientServiceTests
         Assert.Equal("X", state.PlayerSymbol);
         Assert.Equal("Đã vào phòng ROOM-01", state.ConnectionStatus);
         Assert.False(state.HasOpponent);
+    }
+
+    [Fact]
+    public async Task QuickMatchAsync_sends_request_and_returns_room_joined_state()
+    {
+        var connection = new FakeClientConnection();
+        var service = new SocketGameClientService(connection);
+
+        Task<GameViewState> quickMatchTask = service.QuickMatchAsync(
+            new CancellationTokenSource(TimeSpan.FromSeconds(2)).Token);
+
+        Assert.Equal(MessageType.QuickMatch, connection.SentMessages.Last().Type);
+
+        connection.RaiseMessage(new MessageEnvelope
+        {
+            Type = MessageType.RoomJoined,
+            Payload = JsonSerializer.SerializeToElement(new
+            {
+                roomId = "ROOM-Q",
+                playerId = "player-x",
+                symbol = "X"
+            })
+        });
+
+        GameViewState state = await quickMatchTask.WaitAsync(TimeSpan.FromSeconds(2));
+
+        Assert.Equal("ROOM-Q", state.RoomId);
+        Assert.Equal("X", state.PlayerSymbol);
+        Assert.False(state.HasOpponent);
+    }
+
+    [Fact]
+    public async Task GetMyHistoryAsync_sends_request_and_parses_history_payload()
+    {
+        var connection = new FakeClientConnection();
+        var service = new SocketGameClientService(connection);
+
+        Task<IReadOnlyList<MatchSummary>> historyTask = service.GetMyHistoryAsync(
+            new CancellationTokenSource(TimeSpan.FromSeconds(2)).Token);
+
+        Assert.Equal(MessageType.MyHistoryRequest, connection.SentMessages.Last().Type);
+
+        connection.RaiseMessage(new MessageEnvelope
+        {
+            Type = MessageType.MyHistoryReceived,
+            Payload = JsonSerializer.SerializeToElement(new
+            {
+                matches = new[]
+                {
+                    new
+                    {
+                        roomId = "ROOM-1",
+                        playerXName = "Alice",
+                        playerOName = "Bob",
+                        winnerName = "Alice",
+                        playedAtUtc = DateTime.UtcNow,
+                        moveCount = 12
+                    }
+                }
+            })
+        });
+
+        IReadOnlyList<MatchSummary> matches = await historyTask.WaitAsync(TimeSpan.FromSeconds(2));
+        MatchSummary match = Assert.Single(matches);
+
+        Assert.Equal("Alice", match.PlayerX);
+        Assert.Equal("Bob", match.PlayerO);
+        Assert.Equal("Alice", match.Winner);
+        Assert.Equal(12, match.MoveCount);
+    }
+
+    [Fact]
+    public async Task GetTopRecordsAsync_sends_request_and_parses_top_players()
+    {
+        var connection = new FakeClientConnection();
+        var service = new SocketGameClientService(connection);
+
+        Task<IReadOnlyList<PlayerRecordSummary>> recordsTask = service.GetTopRecordsAsync(
+            new CancellationTokenSource(TimeSpan.FromSeconds(2)).Token);
+
+        Assert.Equal(MessageType.TopRecordsRequest, connection.SentMessages.Last().Type);
+
+        connection.RaiseMessage(new MessageEnvelope
+        {
+            Type = MessageType.TopRecordsReceived,
+            Payload = JsonSerializer.SerializeToElement(new
+            {
+                players = new[]
+                {
+                    new
+                    {
+                        playerName = "Alice",
+                        wins = 3,
+                        losses = 1,
+                        draws = 2
+                    }
+                }
+            })
+        });
+
+        IReadOnlyList<PlayerRecordSummary> records = await recordsTask.WaitAsync(TimeSpan.FromSeconds(2));
+        PlayerRecordSummary record = Assert.Single(records);
+
+        Assert.Equal("Alice", record.PlayerName);
+        Assert.Equal(3, record.Wins);
+        Assert.Equal(1, record.Losses);
+        Assert.Equal(2, record.Draws);
     }
 
     [Fact]
@@ -540,6 +685,37 @@ public sealed class SocketGameClientServiceTests
         await connection.DisconnectAsync();
 
         Assert.Equal("Mất kết nối server", states.Last().ConnectionStatus);
+    }
+
+    [Fact]
+    public async Task DisconnectAsync_ClearsCurrentAuth()
+    {
+        var connection = new FakeClientConnection();
+        var service = new SocketGameClientService(connection);
+
+        Task<AuthSession> registerTask = service.RegisterAsync(
+            "alice",
+            "1234",
+            "Alice",
+            new CancellationTokenSource(TimeSpan.FromSeconds(2)).Token);
+
+        connection.RaiseMessage(new MessageEnvelope
+        {
+            Type = MessageType.AuthAccepted,
+            PlayerId = "session-id",
+            Payload = JsonSerializer.SerializeToElement(new
+            {
+                userId = "user-id",
+                username = "alice",
+                displayName = "Alice"
+            })
+        });
+
+        await registerTask.WaitAsync(TimeSpan.FromSeconds(2));
+
+        await connection.DisconnectAsync();
+
+        Assert.Null(service.CurrentAuth);
     }
 
     [Fact]

@@ -16,4 +16,8 @@ public interface IMatchHistoryStore
     Task<IReadOnlyList<MatchRecord>> GetMatchesByPlayerAsync(
         string playerName,
         CancellationToken cancellationToken = default);
+
+    Task<IReadOnlyList<MatchRecord>> GetMatchesByUserIdAsync(
+        Guid userId,
+        CancellationToken cancellationToken = default);
 }

@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.Threading;
 using System.Threading.Tasks;
+using CaroNet.Client.WinUI.Models;
 using CaroNet.Shared.Game;
 
 namespace CaroNet.Client.WinUI.Services;
@@ -18,6 +19,7 @@ public sealed class LocalDemoGameClientService : IGameClientService
     private string _roomId = string.Empty;
     private bool _hasOpponent;
     private GameViewState? _currentState;
+    private AuthSession? _currentAuth;
 
     // Đăng ký sự kiện Chat cho class demo
     public event EventHandler<CaroNet.Shared.Protocol.Payloads.ChatReceivedPayload>? ChatReceived;
@@ -44,12 +46,45 @@ public sealed class LocalDemoGameClientService : IGameClientService
 
     public GameViewState CurrentState => _currentState ?? BuildState(string.Empty);
 
+    public AuthSession? CurrentAuth => _currentAuth;
+
     public Task ConnectAsync(ConnectionRequest request, CancellationToken cancellationToken)
     {
         _playerName = string.IsNullOrWhiteSpace(request.PlayerName) ? "Player" : request.PlayerName.Trim();
         _connectionStatus = $"Đã kết nối demo tới {request.Host}:{request.Port}";
         PublishState(string.Empty);
         return Task.CompletedTask;
+    }
+
+    public Task<AuthSession> RegisterAsync(
+        string username,
+        string password,
+        string displayName,
+        CancellationToken cancellationToken)
+    {
+        _currentAuth = new AuthSession(
+            Guid.NewGuid().ToString(),
+            username.Trim(),
+            displayName.Trim());
+        _playerName = _currentAuth.DisplayName;
+        PublishState(string.Empty);
+
+        return Task.FromResult(_currentAuth);
+    }
+
+    public Task<AuthSession> LoginAsync(
+        string username,
+        string password,
+        CancellationToken cancellationToken)
+    {
+        _currentAuth = new AuthSession(
+            Guid.NewGuid().ToString(),
+            username.Trim(),
+            username.Trim());
+        _playerName = _currentAuth.DisplayName;
+        PublishState(string.Empty);
+
+        return Task.FromResult(_currentAuth);
     }
 
     public Task<GameViewState> CreateRoomAsync(CancellationToken cancellationToken)
@@ -70,6 +105,39 @@ public sealed class LocalDemoGameClientService : IGameClientService
         _connectionStatus = $"Đã vào phòng {_roomId}";
         var state = PublishState(string.Empty);
         return Task.FromResult(state);
+    }
+
+    public Task<GameViewState> QuickMatchAsync(CancellationToken cancellationToken)
+    {
+        _roomId = "ROOM-QUICK";
+        _playerSymbol = "X";
+        _hasOpponent = false;
+        _connectionStatus = $"Đã vào phòng {_roomId}";
+        var state = PublishState(string.Empty);
+
+        return Task.FromResult(state);
+    }
+
+    public Task<IReadOnlyList<MatchSummary>> GetMyHistoryAsync(CancellationToken cancellationToken)
+    {
+        IReadOnlyList<MatchSummary> matches = [];
+        return Task.FromResult(matches);
+    }
+
+    public Task<IReadOnlyList<PlayerRecordSummary>> GetTopRecordsAsync(CancellationToken cancellationToken)
+    {
+        IReadOnlyList<PlayerRecordSummary> records =
+        [
+            new PlayerRecordSummary
+            {
+                PlayerName = "Demo",
+                Wins = 1,
+                Losses = 0,
+                Draws = 0
+            }
+        ];
+
+        return Task.FromResult(records);
     }
 
     public Task MakeMoveAsync(BoardPosition position, CancellationToken cancellationToken)

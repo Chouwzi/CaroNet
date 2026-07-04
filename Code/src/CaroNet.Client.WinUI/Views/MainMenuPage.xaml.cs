@@ -16,46 +16,18 @@ public sealed partial class MainMenuPage : Page
     {
         InitializeComponent();
         DataContext = _viewModel;
-
-        Loaded += MainMenuPage_Loaded;
-    }
-
-    private async void MainMenuPage_Loaded(
-        object sender,
-        RoutedEventArgs e)
-    {
-        try
-        {
-            await _viewModel.LoadBestRecordsAsync();
-        }
-        catch (Exception ex)
-        {
-            var dialog = new ContentDialog
-            {
-                Title = "Lỗi",
-                Content = $"Không thể tải bảng xếp hạng.\n\n{ex.Message}",
-                CloseButtonText = "OK",
-                XamlRoot = this.XamlRoot
-            };
-
-            await dialog.ShowAsync();
-        }
     }
 
     protected override void OnNavigatedTo(NavigationEventArgs e)
     {
         base.OnNavigatedTo(e);
 
-        string? playerName = null;
         string? serverHost = null;
         int? serverPort = null;
 
         try
         {
             var localSettings = Windows.Storage.ApplicationData.Current.LocalSettings.Values;
-
-            if (localSettings.ContainsKey("PlayerName"))
-                playerName = localSettings["PlayerName"] as string;
 
             if (localSettings.ContainsKey("ServerHost"))
                 serverHost = localSettings["ServerHost"] as string;
@@ -79,16 +51,21 @@ public sealed partial class MainMenuPage : Page
                 {
                     var lines = System.IO.File.ReadAllLines(path);
 
-                    if (lines.Length >= 1)
-                        playerName = lines[0];
-
-                    if (lines.Length >= 2)
-                        serverHost = lines[1];
-
-                    if (lines.Length >= 3 &&
-                        int.TryParse(lines[2], out int p2))
+                    if (lines.Length >= 3)
                     {
-                        serverPort = p2;
+                        serverHost = lines[1];
+                        if (int.TryParse(lines[2], out int p2))
+                        {
+                            serverPort = p2;
+                        }
+                    }
+                    else if (lines.Length >= 2)
+                    {
+                        serverHost = lines[0];
+                        if (int.TryParse(lines[1], out int p2))
+                        {
+                            serverPort = p2;
+                        }
                     }
                 }
             }
@@ -97,9 +74,6 @@ public sealed partial class MainMenuPage : Page
             }
         }
 
-        if (!string.IsNullOrEmpty(playerName))
-            _viewModel.PlayerName = playerName;
-
         if (!string.IsNullOrEmpty(serverHost))
             _viewModel.ServerHost = serverHost;
 
@@ -107,11 +81,102 @@ public sealed partial class MainMenuPage : Page
             _viewModel.ServerPort = serverPort.Value;
     }
 
-    private async void ConnectButton_Click(
+    private void PasswordInput_PasswordChanged(
         object sender,
         RoutedEventArgs e)
     {
-        await _viewModel.ConnectAsync();
+        _viewModel.Password = PasswordInput.Password;
+    }
+
+    private async void LoginButton_Click(
+        object sender,
+        RoutedEventArgs e)
+    {
+        await _viewModel.LoginAsync();
+    }
+
+    private async void CreateAccountLink_Click(
+        object sender,
+        RoutedEventArgs e)
+    {
+        await ShowRegisterDialogAsync();
+    }
+
+    private async System.Threading.Tasks.Task ShowRegisterDialogAsync()
+    {
+        var usernameBox = new TextBox
+        {
+            Header = "Tên đăng nhập",
+            PlaceholderText = "Ví dụ: annie123"
+        };
+
+        var passwordBox = new PasswordBox
+        {
+            Header = "Mật khẩu",
+            PlaceholderText = "Tối thiểu 4 ký tự"
+        };
+
+        var displayNameBox = new TextBox
+        {
+            Header = "Tên hiển thị",
+            PlaceholderText = "Ví dụ: Annie"
+        };
+
+        var errorText = new TextBlock
+        {
+            TextWrapping = TextWrapping.Wrap
+        };
+
+        var content = new StackPanel
+        {
+            Spacing = 12
+        };
+
+        content.Children.Add(usernameBox);
+        content.Children.Add(passwordBox);
+        content.Children.Add(displayNameBox);
+        content.Children.Add(errorText);
+
+        var dialog = new ContentDialog
+        {
+            Title = "Tạo tài khoản",
+            Content = content,
+            PrimaryButtonText = "Tạo tài khoản",
+            CloseButtonText = "Hủy",
+            DefaultButton = ContentDialogButton.Primary,
+            XamlRoot = XamlRoot
+        };
+
+        dialog.PrimaryButtonClick += async (_, args) =>
+        {
+            ContentDialogButtonClickDeferral deferral = args.GetDeferral();
+            try
+            {
+                _viewModel.Username = usernameBox.Text;
+                _viewModel.Password = passwordBox.Password;
+                _viewModel.DisplayName = displayNameBox.Text;
+
+                bool registered = await _viewModel.RegisterAsync();
+                args.Cancel = !registered;
+                errorText.Text = registered ? string.Empty : _viewModel.AuthStatus;
+            }
+            finally
+            {
+                deferral.Complete();
+            }
+        };
+
+        await dialog.ShowAsync();
+    }
+
+    private async void QuickMatchButton_Click(
+        object sender,
+        RoutedEventArgs e)
+    {
+        if (await _viewModel.QuickMatchAsync())
+        {
+            Frame.Navigate(typeof(GamePage));
+        }
     }
 
     private async void CreateRoomButton_Click(
@@ -128,6 +193,31 @@ public sealed partial class MainMenuPage : Page
         object sender,
         RoutedEventArgs e)
     {
+        var roomIdBox = new TextBox
+        {
+            Header = "Mã phòng",
+            PlaceholderText = "Nhập mã phòng",
+            Text = _viewModel.RoomId
+        };
+
+        var dialog = new ContentDialog
+        {
+            Title = "Vào phòng",
+            Content = roomIdBox,
+            PrimaryButtonText = "Vào",
+            CloseButtonText = "Hủy",
+            DefaultButton = ContentDialogButton.Primary,
+            XamlRoot = XamlRoot
+        };
+
+        ContentDialogResult result = await dialog.ShowAsync();
+        if (result != ContentDialogResult.Primary)
+        {
+            return;
+        }
+
+        _viewModel.RoomId = roomIdBox.Text;
+
         if (await _viewModel.JoinRoomAsync())
         {
             Frame.Navigate(typeof(GamePage));

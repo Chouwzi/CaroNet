@@ -1,3 +1,4 @@
+using CaroNet.Client.WinUI.Models;
 using CaroNet.Shared.Game;
 using CaroNet.Shared.Protocol.Payloads;
 using System;
@@ -17,11 +18,30 @@ public interface IGameClientService
 
     GameViewState CurrentState { get; }
 
+    AuthSession? CurrentAuth { get; }
+
     Task ConnectAsync(ConnectionRequest request, CancellationToken cancellationToken);
+
+    Task<AuthSession> RegisterAsync(
+        string username,
+        string password,
+        string displayName,
+        CancellationToken cancellationToken);
+
+    Task<AuthSession> LoginAsync(
+        string username,
+        string password,
+        CancellationToken cancellationToken);
 
     Task<GameViewState> CreateRoomAsync(CancellationToken cancellationToken);
 
     Task<GameViewState> JoinRoomAsync(string roomId, CancellationToken cancellationToken);
+
+    Task<GameViewState> QuickMatchAsync(CancellationToken cancellationToken);
+
+    Task<IReadOnlyList<MatchSummary>> GetMyHistoryAsync(CancellationToken cancellationToken);
+
+    Task<IReadOnlyList<PlayerRecordSummary>> GetTopRecordsAsync(CancellationToken cancellationToken);
 
     Task MakeMoveAsync(BoardPosition position, CancellationToken cancellationToken);
 
@@ -37,6 +57,11 @@ public interface IGameClientService
 }
 
 public sealed record ConnectionRequest(string PlayerName, string Host, int Port);
+
+public sealed record AuthSession(
+    string UserId,
+    string Username,
+    string DisplayName);
 
 public sealed record GameViewState(
     string RoomId,

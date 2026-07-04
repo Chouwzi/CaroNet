@@ -10,6 +10,7 @@ using CaroNet.Server.Host.Networking;
 using CaroNet.Server.Host.Services;
 using CaroNet.Shared.Game;
 using CaroNet.Shared.Protocol;
+using CaroNet.Storage.Matches;
 using CaroNet.Storage.Statistics;
 using Xunit;
 
@@ -67,6 +68,9 @@ namespace CaroNet.Server.Host.Tests
         [Fact]
         public async Task DispatchAsync_ShouldTriggerRateLimit_WhenRequestsAreTooFast()
         {
+            await RegisterSessionAsync(_dispatcher, _session, "Alice", "Alice");
+            Assert.Equal(MessageType.AuthAccepted, ReceiveEnvelope().Type);
+
             var envelope = new MessageEnvelope
             {
                 Type = MessageType.CreateRoom,
@@ -97,12 +101,17 @@ namespace CaroNet.Server.Host.Tests
         }
 
         [Fact]
-        public async Task DispatchAsync_ShouldAllowCreateRoomImmediatelyAfterHello()
+        public async Task DispatchAsync_ShouldAllowCreateRoomImmediatelyAfterRegister()
         {
-            var hello = new MessageEnvelope
+            var register = new MessageEnvelope
             {
-                Type = MessageType.Hello,
-                Payload = JsonSerializer.SerializeToElement(new { playerName = "Alice" })
+                Type = MessageType.Register,
+                Payload = JsonSerializer.SerializeToElement(new
+                {
+                    username = "alice",
+                    password = "1234",
+                    displayName = "Alice"
+                })
             };
 
             var createRoom = new MessageEnvelope
@@ -111,13 +120,13 @@ namespace CaroNet.Server.Host.Tests
                 Payload = JsonSerializer.SerializeToElement(new { })
             };
 
-            await _dispatcher.DispatchAsync(_session, hello, CancellationToken.None);
+            await _dispatcher.DispatchAsync(_session, register, CancellationToken.None);
             await _dispatcher.DispatchAsync(_session, createRoom, CancellationToken.None);
 
             MessageEnvelope firstResponse = ReceiveEnvelope();
             MessageEnvelope secondResponse = ReceiveEnvelope();
 
-            Assert.Equal(MessageType.HelloAccepted, firstResponse.Type);
+            Assert.Equal(MessageType.AuthAccepted, firstResponse.Type);
             Assert.Equal(MessageType.RoomJoined, secondResponse.Type);
             Assert.False(string.IsNullOrWhiteSpace(secondResponse.RoomId));
         }
@@ -125,6 +134,9 @@ namespace CaroNet.Server.Host.Tests
         [Fact]
         public async Task DispatchAsync_ShouldRejectCreateRoom_WhenSessionAlreadyInRoom()
         {
+            await RegisterSessionAsync(_dispatcher, _session, "Alice", "Alice");
+            Assert.Equal(MessageType.AuthAccepted, ReceiveEnvelope().Type);
+
             var createRoom = new MessageEnvelope
             {
                 Type = MessageType.CreateRoom,
@@ -147,6 +159,146 @@ namespace CaroNet.Server.Host.Tests
         }
 
         [Fact]
+        public async Task DispatchAsync_CreateRoom_WhenNotLoggedIn_ReturnsError()
+        {
+            await _dispatcher.DispatchAsync(
+                _session,
+                new MessageEnvelope
+                {
+                    Type = MessageType.CreateRoom
+                },
+                CancellationToken.None);
+
+            MessageEnvelope error = ReceiveEnvelope();
+
+            Assert.Equal(MessageType.Error, error.Type);
+            Assert.Contains("đăng nhập", GetPayloadString(error, "message"));
+        }
+
+        [Fact]
+        public async Task DispatchAsync_QuickMatch_PairsTwoLoggedInPlayers()
+        {
+            var roomManager = new RoomManager();
+            var dispatcher = new GameMessageDispatcher(
+                roomManager,
+                new ClientSessionRegistry());
+
+            using var alice = SocketPair.Create(dispatcher);
+            using var bob = SocketPair.Create(dispatcher);
+
+            await RegisterSessionAsync(dispatcher, alice.ServerSession, "Alice", "Alice");
+            Assert.Equal(MessageType.AuthAccepted, alice.ReceiveEnvelope().Type);
+
+            await dispatcher.DispatchAsync(
+                alice.ServerSession,
+                new MessageEnvelope { Type = MessageType.QuickMatch },
+                CancellationToken.None);
+
+            MessageEnvelope aliceJoined = alice.ReceiveEnvelope();
+            Assert.Equal(MessageType.RoomJoined, aliceJoined.Type);
+            Assert.False(string.IsNullOrWhiteSpace(aliceJoined.RoomId));
+            Assert.Equal(1, roomManager.RoomCount);
+
+            await RegisterSessionAsync(dispatcher, bob.ServerSession, "Bob", "Bob");
+            Assert.Equal(MessageType.AuthAccepted, bob.ReceiveEnvelope().Type);
+
+            await dispatcher.DispatchAsync(
+                bob.ServerSession,
+                new MessageEnvelope { Type = MessageType.QuickMatch },
+                CancellationToken.None);
+
+            MessageEnvelope bobJoined = bob.ReceiveEnvelope();
+            MessageEnvelope aliceStarted = alice.ReceiveEnvelope();
+            MessageEnvelope bobStarted = bob.ReceiveEnvelope();
+
+            Assert.Equal(aliceJoined.RoomId, bobJoined.RoomId);
+            Assert.Equal(MessageType.GameStarted, aliceStarted.Type);
+            Assert.Equal(MessageType.GameStarted, bobStarted.Type);
+        }
+
+        [Fact]
+        public async Task DispatchAsync_MyHistoryRequest_ReturnsOnlyCurrentUserMatches()
+        {
+            var historyStore = new InMemoryMatchHistoryStore();
+            var dispatcher = new GameMessageDispatcher(
+                new RoomManager(),
+                new ClientSessionRegistry(),
+                matchHistoryStore: historyStore);
+            using var alice = SocketPair.Create(dispatcher);
+
+            await RegisterSessionAsync(dispatcher, alice.ServerSession, "Alice", "Alice");
+            MessageEnvelope authAccepted = alice.ReceiveEnvelope();
+            Guid aliceUserId = Guid.Parse(GetPayloadString(authAccepted, "userId"));
+
+            var aliceMatch = new MatchRecord(
+                Guid.NewGuid(),
+                "ROOM-A",
+                "Alice",
+                "Bob",
+                "Alice",
+                DateTime.UtcNow.AddMinutes(-5),
+                DateTime.UtcNow,
+                [])
+            {
+                PlayerXUserId = aliceUserId,
+                PlayerOUserId = Guid.NewGuid(),
+                WinnerUserId = aliceUserId
+            };
+            var legacyMatch = aliceMatch with
+            {
+                MatchId = Guid.NewGuid(),
+                RoomId = "ROOM-OLD",
+                PlayerXUserId = null,
+                PlayerOUserId = null,
+                WinnerUserId = null
+            };
+
+            await historyStore.SaveMatchAsync(aliceMatch);
+            await historyStore.SaveMatchAsync(legacyMatch);
+
+            await dispatcher.DispatchAsync(
+                alice.ServerSession,
+                new MessageEnvelope { Type = MessageType.MyHistoryRequest },
+                CancellationToken.None);
+
+            MessageEnvelope history = alice.ReceiveEnvelope();
+
+            Assert.Equal(MessageType.MyHistoryReceived, history.Type);
+            Assert.True(history.Payload.HasValue);
+            JsonElement matches = history.Payload.Value.GetProperty("matches");
+            JsonElement match = Assert.Single(matches.EnumerateArray());
+            Assert.Equal("ROOM-A", match.GetProperty("roomId").GetString());
+        }
+
+        [Fact]
+        public async Task DispatchAsync_TopRecordsRequest_ReturnsPlayerRecords()
+        {
+            var recordStore = new InMemoryPlayerRecordStore();
+            await recordStore.SaveAsync(new PlayerRecord("Alice", 3, 1, 0));
+
+            var dispatcher = new GameMessageDispatcher(
+                new RoomManager(),
+                new ClientSessionRegistry(),
+                playerRecordStore: recordStore);
+            using var alice = SocketPair.Create(dispatcher);
+
+            await dispatcher.DispatchAsync(
+                alice.ServerSession,
+                new MessageEnvelope { Type = MessageType.TopRecordsRequest },
+                CancellationToken.None);
+
+            MessageEnvelope ranking = alice.ReceiveEnvelope();
+
+            Assert.Equal(MessageType.TopRecordsReceived, ranking.Type);
+            Assert.True(ranking.Payload.HasValue);
+            JsonElement players = ranking.Payload.Value.GetProperty("players");
+            JsonElement player = Assert.Single(players.EnumerateArray());
+            Assert.Equal("Alice", player.GetProperty("playerName").GetString());
+            Assert.Equal(3, player.GetProperty("wins").GetInt32());
+            Assert.Equal(1, player.GetProperty("losses").GetInt32());
+        }
+
+        [Fact]
         public async Task DispatchAsync_LeaveRoom_WhenAlone_RemovesRoomFromServer()
         {
             var roomManager = new RoomManager();
@@ -155,14 +307,7 @@ namespace CaroNet.Server.Host.Tests
                 new ClientSessionRegistry());
             using var alice = SocketPair.Create(dispatcher);
 
-            await dispatcher.DispatchAsync(
-                alice.ServerSession,
-                new MessageEnvelope
-                {
-                    Type = MessageType.Hello,
-                    Payload = JsonSerializer.SerializeToElement(new { playerName = "Alice" })
-                },
-                CancellationToken.None);
+            await RegisterSessionAsync(dispatcher, alice.ServerSession, "Alice", "Alice");
 
             await dispatcher.DispatchAsync(
                 alice.ServerSession,
@@ -172,7 +317,7 @@ namespace CaroNet.Server.Host.Tests
                 },
                 CancellationToken.None);
 
-            Assert.Equal(MessageType.HelloAccepted, alice.ReceiveEnvelope().Type);
+            Assert.Equal(MessageType.AuthAccepted, alice.ReceiveEnvelope().Type);
             Assert.Equal(MessageType.RoomJoined, alice.ReceiveEnvelope().Type);
             Assert.Equal(1, roomManager.RoomCount);
 
@@ -187,6 +332,18 @@ namespace CaroNet.Server.Host.Tests
 
             Assert.Equal(0, roomManager.RoomCount);
             Assert.Null(roomManager.GetRoomBySession(alice.ServerSession.Id));
+
+            await Task.Delay(150);
+            await dispatcher.DispatchAsync(
+                alice.ServerSession,
+                new MessageEnvelope
+                {
+                    Type = MessageType.CreateRoom
+                },
+                CancellationToken.None);
+
+            Assert.Equal(MessageType.RoomJoined, alice.ReceiveEnvelope().Type);
+            Assert.Equal(1, roomManager.RoomCount);
         }
 
         [Fact]
@@ -480,14 +637,7 @@ namespace CaroNet.Server.Host.Tests
             SocketPair alice,
             SocketPair bob)
         {
-            await dispatcher.DispatchAsync(
-                alice.ServerSession,
-                new MessageEnvelope
-                {
-                    Type = MessageType.Hello,
-                    Payload = JsonSerializer.SerializeToElement(new { playerName = "Alice" })
-                },
-                CancellationToken.None);
+            await RegisterSessionAsync(dispatcher, alice.ServerSession, "Alice", "Alice");
 
             await dispatcher.DispatchAsync(
                 alice.ServerSession,
@@ -497,18 +647,11 @@ namespace CaroNet.Server.Host.Tests
                 },
                 CancellationToken.None);
 
-            Assert.Equal(MessageType.HelloAccepted, alice.ReceiveEnvelope().Type);
+            Assert.Equal(MessageType.AuthAccepted, alice.ReceiveEnvelope().Type);
             MessageEnvelope roomJoined = alice.ReceiveEnvelope();
             string roomId = roomJoined.RoomId!;
 
-            await dispatcher.DispatchAsync(
-                bob.ServerSession,
-                new MessageEnvelope
-                {
-                    Type = MessageType.Hello,
-                    Payload = JsonSerializer.SerializeToElement(new { playerName = "Bob" })
-                },
-                CancellationToken.None);
+            await RegisterSessionAsync(dispatcher, bob.ServerSession, "Bob", "Bob");
 
             await dispatcher.DispatchAsync(
                 bob.ServerSession,
@@ -520,12 +663,33 @@ namespace CaroNet.Server.Host.Tests
                 },
                 CancellationToken.None);
 
-            Assert.Equal(MessageType.HelloAccepted, bob.ReceiveEnvelope().Type);
+            Assert.Equal(MessageType.AuthAccepted, bob.ReceiveEnvelope().Type);
             Assert.Equal(MessageType.RoomJoined, bob.ReceiveEnvelope().Type);
             Assert.Equal(MessageType.GameStarted, alice.ReceiveEnvelope().Type);
             Assert.Equal(MessageType.GameStarted, bob.ReceiveEnvelope().Type);
 
             return roomId;
+        }
+
+        private static Task RegisterSessionAsync(
+            GameMessageDispatcher dispatcher,
+            ClientSession session,
+            string username,
+            string displayName)
+        {
+            return dispatcher.DispatchAsync(
+                session,
+                new MessageEnvelope
+                {
+                    Type = MessageType.Register,
+                    Payload = JsonSerializer.SerializeToElement(new
+                    {
+                        username = username.ToLowerInvariant(),
+                        password = "1234",
+                        displayName
+                    })
+                },
+                CancellationToken.None);
         }
 
         private static string GetPayloadString(MessageEnvelope envelope, string propertyName)

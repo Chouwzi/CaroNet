@@ -67,6 +67,29 @@ public sealed class GameRoomTests
     }
 
     [Fact]
+    public async Task JoinQuickMatch_WhenManySessionsJoinConcurrently_KeepsMaxTwoPlayersPerRoom()
+    {
+        var roomManager = new RoomManager();
+        ClientSession[] sessions = Enumerable.Range(0, 5)
+            .Select(_ => CreateDummySession())
+            .ToArray();
+
+        var results = await Task.WhenAll(
+            sessions.Select((session, index) => Task.Run(
+                () => roomManager.JoinQuickMatch(session, $"Player{index}"))));
+
+        Assert.All(results, result => Assert.NotNull(result.room));
+        Assert.Equal(3, roomManager.RoomCount);
+
+        var groupedRooms = results
+            .GroupBy(result => result.room!.RoomId)
+            .Select(group => group.Count())
+            .ToList();
+
+        Assert.All(groupedRooms, count => Assert.InRange(count, 1, 2));
+    }
+
+    [Fact]
     public void TryMakeMove_ValidMove_Succeeds()
     {
         var room = new GameRoom();

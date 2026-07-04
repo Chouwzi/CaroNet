@@ -15,19 +15,32 @@ namespace CaroNet.Client.WinUI.ViewModels;
 
 public sealed class MainMenuViewModel : INotifyPropertyChanged
 {
-    private const string DefaultHost = "127.0.0.1";
-    private const int DefaultPort = 5000;
-
     private readonly IGameClientService _gameClient;
 
     private string _connectionStatus = "Chưa kết nối";
+    private string _authStatus = "Chưa đăng nhập";
     private string _playerName = string.Empty;
     private string _roomId = string.Empty;
+    private string _username = string.Empty;
+    private string _password = string.Empty;
+    private string _displayName = string.Empty;
     private bool _isConnected;
+    private bool _isAuthenticated;
+    private bool _isActionBusy;
+    private string _actionStatus = string.Empty;
+    private string _rankingStatus = "Mở Ranking để tải Top 10.";
 
     public MainMenuViewModel(IGameClientService gameClient)
     {
         _gameClient = gameClient;
+
+        // Khôi phục phiên đăng nhập khi quay lại menu trong cùng cửa sổ app.
+        if (_gameClient.CurrentAuth is AuthSession currentAuth)
+        {
+            ApplyAuthSession(currentAuth);
+            AuthStatus = "Đã đăng nhập.";
+            _isConnected = true;
+        }
     }
 
     public event PropertyChangedEventHandler? PropertyChanged;
@@ -40,36 +53,48 @@ public sealed class MainMenuViewModel : INotifyPropertyChanged
     public async Task LoadBestRecordsAsync()
     {
         BestRecords.Clear();
+        RefreshBestRecordsState("Đang tải Ranking...");
 
         try
         {
-            var matches =
-                await AppServices.MatchHistoryStore.GetAllMatchesAsync();
+            if (!await EnsureConnectedAsync())
+            {
+                RefreshBestRecordsState("Chưa kết nối được server.");
+                return;
+            }
 
-            var ranking = matches
-                .Where(match => !string.IsNullOrWhiteSpace(match.WinnerName))
-                .GroupBy(match => match.WinnerName!)
-                .Select(group => new BestRecordItem
-                {
-                    PlayerName = group.Key,
-                    Wins = group.Count()
-                })
-                .OrderByDescending(item => item.Wins)
-                .ThenBy(item => item.PlayerName)
+            IReadOnlyList<PlayerRecordSummary> records =
+                await _gameClient.GetTopRecordsAsync(CancellationToken.None);
+
+            var ranking = records
+                .Where(record => !string.IsNullOrWhiteSpace(record.PlayerName))
+                .OrderByDescending(record => record.WinRate)
+                .ThenByDescending(record => record.Wins)
+                .ThenBy(record => record.PlayerName)
                 .Take(10)
                 .ToList();
 
             int rank = 1;
 
-            foreach (var item in ranking)
+            foreach (var record in ranking)
             {
-                item.Rank = rank++;
-                BestRecords.Add(item);
+                BestRecords.Add(new BestRecordItem
+                {
+                    Rank = rank++,
+                    PlayerName = record.PlayerName,
+                    Wins = record.Wins,
+                    Losses = record.Losses,
+                    Draws = record.Draws
+                });
             }
+
+            RefreshBestRecordsState(BestRecords.Count == 0
+                ? "Chưa có người chơi nào trong Ranking."
+                : $"Đã tải {BestRecords.Count} người chơi.");
         }
-        catch
+        catch (Exception ex)
         {
-            
+            RefreshBestRecordsState($"Không thể tải Ranking: {ex.Message}");
         }
     }
 
@@ -80,6 +105,69 @@ public sealed class MainMenuViewModel : INotifyPropertyChanged
         get => _playerName;
         set => SetProperty(ref _playerName, value);
     }
+
+    public string Username
+    {
+        get => _username;
+        set => SetProperty(ref _username, value);
+    }
+
+    public string Password
+    {
+        get => _password;
+        set => SetProperty(ref _password, value);
+    }
+
+    public string DisplayName
+    {
+        get => _displayName;
+        set => SetProperty(ref _displayName, value);
+    }
+
+    public bool IsAuthenticated
+    {
+        get => _isAuthenticated;
+        private set
+        {
+            if (SetProperty(ref _isAuthenticated, value))
+            {
+                OnPropertyChanged(nameof(GreetingText));
+                OnPropertyChanged(nameof(CanUseGameActions));
+            }
+        }
+    }
+
+    public string GreetingText => IsAuthenticated
+        ? $"Xin chào, {PlayerName}"
+        : "Vui lòng đăng nhập để chơi";
+
+    public bool IsActionBusy
+    {
+        get => _isActionBusy;
+        private set
+        {
+            if (SetProperty(ref _isActionBusy, value))
+            {
+                OnPropertyChanged(nameof(CanUseGameActions));
+            }
+        }
+    }
+
+    public bool CanUseGameActions => IsAuthenticated && !IsActionBusy;
+
+    public string ActionStatus
+    {
+        get => _actionStatus;
+        private set => SetProperty(ref _actionStatus, value);
+    }
+
+    public string RankingStatus
+    {
+        get => _rankingStatus;
+        private set => SetProperty(ref _rankingStatus, value);
+    }
+
+    public bool HasBestRecords => BestRecords.Count > 0;
 
     
     private string _serverHost = "127.0.0.1";
@@ -108,22 +196,19 @@ public sealed class MainMenuViewModel : INotifyPropertyChanged
         private set => SetProperty(ref _connectionStatus, value);
     }
 
+    public string AuthStatus
+    {
+        get => _authStatus;
+        private set => SetProperty(ref _authStatus, value);
+    }
+
     public async Task<bool> ConnectAsync()
     {
-        string? playerNameError = PlayerNameValidator.Validate(PlayerName);
-
-        if (playerNameError != null)
-        {
-            ConnectionStatus = playerNameError;
-            return false;
-        }
-
-        // Lưu thông tin người chơi
+        // Chỉ lưu địa chỉ server, không lưu tài khoản để test nhiều client.
         try
         {
             var localSettings = ApplicationData.Current.LocalSettings;
 
-            localSettings.Values["PlayerName"] = PlayerName;
             localSettings.Values["ServerHost"] = ServerHost;
             localSettings.Values["ServerPort"] = ServerPort;
         }
@@ -148,7 +233,6 @@ public sealed class MainMenuViewModel : INotifyPropertyChanged
                     filePath,
                     new[]
                     {
-                    PlayerName,
                     ServerHost,
                     ServerPort.ToString()
                     });
@@ -162,7 +246,7 @@ public sealed class MainMenuViewModel : INotifyPropertyChanged
         {
             await _gameClient.ConnectAsync(
                 new ConnectionRequest(
-                    PlayerName,
+                    string.IsNullOrWhiteSpace(PlayerName) ? "Player" : PlayerName,
                     ServerHost,
                     ServerPort),
                 CancellationToken.None);
@@ -181,6 +265,87 @@ public sealed class MainMenuViewModel : INotifyPropertyChanged
         }
     }
 
+    public async Task<bool> RegisterAsync()
+    {
+        string? error = ValidateRegisterFields();
+        if (error is not null)
+        {
+            AuthStatus = error;
+            return false;
+        }
+
+        try
+        {
+            IsActionBusy = true;
+            ActionStatus = "Đang tạo tài khoản...";
+
+            if (!await EnsureConnectedAsync())
+            {
+                return false;
+            }
+
+            AuthSession session = await _gameClient.RegisterAsync(
+                Username,
+                Password,
+                DisplayName,
+                CancellationToken.None);
+
+            ApplyAuthSession(session);
+            AuthStatus = "Đăng ký và đăng nhập thành công.";
+            return true;
+        }
+        catch (Exception ex)
+        {
+            AuthStatus = ex.Message;
+            return false;
+        }
+        finally
+        {
+            IsActionBusy = false;
+            ActionStatus = string.Empty;
+        }
+    }
+
+    public async Task<bool> LoginAsync()
+    {
+        string? error = ValidateLoginFields();
+        if (error is not null)
+        {
+            AuthStatus = error;
+            return false;
+        }
+
+        try
+        {
+            IsActionBusy = true;
+            ActionStatus = "Đang đăng nhập...";
+
+            if (!await EnsureConnectedAsync())
+            {
+                return false;
+            }
+
+            AuthSession session = await _gameClient.LoginAsync(
+                Username,
+                Password,
+                CancellationToken.None);
+
+            ApplyAuthSession(session);
+            AuthStatus = "Đăng nhập thành công.";
+            return true;
+        }
+        catch (Exception ex)
+        {
+            AuthStatus = ex.Message;
+            return false;
+        }
+        finally
+        {
+            IsActionBusy = false;
+            ActionStatus = string.Empty;
+        }
+    }
+
     private async Task<bool> EnsureConnectedAsync()
     {
         if (_isConnected)
@@ -193,17 +358,17 @@ public sealed class MainMenuViewModel : INotifyPropertyChanged
 
     public async Task<bool> CreateRoomAsync()
     {
-        string? playerNameError =
-            PlayerNameValidator.Validate(PlayerName);
-
-        if (playerNameError != null)
+        if (!IsAuthenticated)
         {
-            ConnectionStatus = playerNameError;
+            ConnectionStatus = "Bạn cần đăng nhập trước khi tạo phòng.";
             return false;
         }
 
         try
         {
+            IsActionBusy = true;
+            ActionStatus = "Đang tạo phòng...";
+
             if (!await EnsureConnectedAsync())
             {
                 return false;
@@ -222,19 +387,21 @@ public sealed class MainMenuViewModel : INotifyPropertyChanged
             ConnectionStatus = ex.Message;
             return false;
         }
+        finally
+        {
+            IsActionBusy = false;
+            ActionStatus = string.Empty;
+        }
     }
 
     public async Task<bool> JoinRoomAsync()
     {
-        string? playerNameError =
-            PlayerNameValidator.Validate(PlayerName);
-
         string? roomIdError =
             RoomIdValidator.Validate(RoomId);
 
-        if (playerNameError != null)
+        if (!IsAuthenticated)
         {
-            ConnectionStatus = playerNameError;
+            ConnectionStatus = "Bạn cần đăng nhập trước khi vào phòng.";
             return false;
         }
 
@@ -246,6 +413,9 @@ public sealed class MainMenuViewModel : INotifyPropertyChanged
 
         try
         {
+            IsActionBusy = true;
+            ActionStatus = "Đang vào phòng...";
+
             if (!await EnsureConnectedAsync())
             {
                 return false;
@@ -265,20 +435,113 @@ public sealed class MainMenuViewModel : INotifyPropertyChanged
             ConnectionStatus = ex.Message;
             return false;
         }
+        finally
+        {
+            IsActionBusy = false;
+            ActionStatus = string.Empty;
+        }
     }
 
-    private void SetProperty<T>(
+    public async Task<bool> QuickMatchAsync()
+    {
+        if (!IsAuthenticated)
+        {
+            ConnectionStatus = "Bạn cần đăng nhập trước khi chơi nhanh.";
+            return false;
+        }
+
+        try
+        {
+            IsActionBusy = true;
+            ActionStatus = "Đang tìm đối thủ...";
+
+            if (!await EnsureConnectedAsync())
+            {
+                return false;
+            }
+
+            GameViewState state = await _gameClient.QuickMatchAsync(
+                CancellationToken.None);
+
+            ConnectionStatus = state.ConnectionStatus;
+
+            return !string.IsNullOrWhiteSpace(state.RoomId);
+        }
+        catch (Exception ex)
+        {
+            ConnectionStatus = ex.Message;
+            return false;
+        }
+        finally
+        {
+            IsActionBusy = false;
+            ActionStatus = string.Empty;
+        }
+    }
+
+    private void ApplyAuthSession(AuthSession session)
+    {
+        Username = session.Username;
+        DisplayName = session.DisplayName;
+        PlayerName = session.DisplayName;
+        Password = string.Empty;
+        IsAuthenticated = true;
+        ConnectionStatus = $"Đã đăng nhập: {session.DisplayName}";
+        OnPropertyChanged(nameof(GreetingText));
+    }
+
+    private void RefreshBestRecordsState(string status)
+    {
+        RankingStatus = status;
+        OnPropertyChanged(nameof(HasBestRecords));
+    }
+
+    private string? ValidateRegisterFields()
+    {
+        if (string.IsNullOrWhiteSpace(DisplayName))
+        {
+            return "Vui lòng nhập tên hiển thị.";
+        }
+
+        return ValidateLoginFields(Username, Password);
+    }
+
+    private string? ValidateLoginFields(string? username = null, string? password = null)
+    {
+        string checkedUsername = username ?? Username;
+        string checkedPassword = password ?? Password;
+
+        if (string.IsNullOrWhiteSpace(checkedUsername))
+        {
+            return "Vui lòng nhập tên đăng nhập.";
+        }
+
+        if (string.IsNullOrWhiteSpace(checkedPassword))
+        {
+            return "Vui lòng nhập mật khẩu.";
+        }
+
+        return null;
+    }
+
+    private bool SetProperty<T>(
         ref T field,
         T value,
         [CallerMemberName] string? propertyName = null)
     {
         if (EqualityComparer<T>.Default.Equals(field, value))
         {
-            return;
+            return false;
         }
 
         field = value;
 
+        OnPropertyChanged(propertyName);
+        return true;
+    }
+
+    private void OnPropertyChanged([CallerMemberName] string? propertyName = null)
+    {
         PropertyChanged?.Invoke(
             this,
             new PropertyChangedEventArgs(propertyName));

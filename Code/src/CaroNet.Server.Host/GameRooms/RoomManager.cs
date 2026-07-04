@@ -11,6 +11,8 @@ public sealed class RoomManager
     private readonly ConcurrentDictionary<string, GameRoom> _rooms = new();
     private readonly ConcurrentDictionary<Guid, string> _sessionRoomMap = new();
     private readonly Func<GameRoom> _roomFactory;
+    private readonly object _quickMatchLock = new();
+    private string? _waitingQuickMatchRoomId;
 
     public RoomManager()
         : this(() => new GameRoom())
@@ -71,6 +73,49 @@ public sealed class RoomManager
         return (room, symbol);
     }
 
+    public (GameRoom? room, Shared.Game.PlayerSymbol? symbol, bool matched) JoinQuickMatch(
+        ClientSession session,
+        string playerName)
+    {
+        lock (_quickMatchLock)
+        {
+            if (IsSessionInRoom(session.Id))
+            {
+                return (null, null, false);
+            }
+
+            if (!string.IsNullOrWhiteSpace(_waitingQuickMatchRoomId) &&
+                _rooms.TryGetValue(_waitingQuickMatchRoomId, out GameRoom? waitingRoom) &&
+                !waitingRoom.IsFull)
+            {
+                var symbol = waitingRoom.TryAddPlayer(session, playerName);
+                if (symbol is not null)
+                {
+                    _sessionRoomMap[session.Id] = waitingRoom.RoomId;
+                    _waitingQuickMatchRoomId = null;
+
+                    Console.WriteLine(
+                        $"[QUICK] {playerName} matched room {waitingRoom.RoomId} as {symbol}");
+
+                    return (waitingRoom, symbol, true);
+                }
+            }
+
+            _waitingQuickMatchRoomId = null;
+
+            GameRoom? room = CreateRoom(session, playerName);
+            if (room is null)
+            {
+                return (null, null, false);
+            }
+
+            _waitingQuickMatchRoomId = room.RoomId;
+            Console.WriteLine($"[QUICK] {playerName} waiting in room {room.RoomId}");
+
+            return (room, Shared.Game.PlayerSymbol.X, false);
+        }
+    }
+
     public GameRoom? GetRoom(string roomId)
     {
         _rooms.TryGetValue(roomId, out GameRoom? room);
@@ -104,6 +149,14 @@ public sealed class RoomManager
         {
             _rooms.TryRemove(roomId, out _);
             Console.WriteLine($"[ROOM] {roomId} removed (empty)");
+        }
+
+        lock (_quickMatchLock)
+        {
+            if (string.Equals(_waitingQuickMatchRoomId, roomId, StringComparison.Ordinal))
+            {
+                _waitingQuickMatchRoomId = null;
+            }
         }
 
         return room;

@@ -12,15 +12,15 @@ public sealed partial class BestRecordPage : Page
         this.InitializeComponent();
     }
 
-    // Hàm này tự động chạy khi màn hình BestRecordPage được kích hoạt mở lên
-    protected override void OnNavigatedTo(NavigationEventArgs e)
+    // Tải Ranking khi mở trang để luôn lấy dữ liệu mới từ server.
+    protected override async void OnNavigatedTo(NavigationEventArgs e)
     {
         base.OnNavigatedTo(e);
 
-        // Lấy ViewModel được truyền từ MainMenuPage sang và gán vào DataContext
         if (e.Parameter is MainMenuViewModel mainMenuViewModel)
         {
             DataContext = mainMenuViewModel;
+            await mainMenuViewModel.LoadBestRecordsAsync();
         }
     }
 

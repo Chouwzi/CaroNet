@@ -4,6 +4,7 @@ using CaroNet.Server.Host.Services;
 using CaroNet.Storage.Database;
 using CaroNet.Storage.Matches;
 using CaroNet.Storage.Statistics;
+using CaroNet.Storage.Users;
 
 var cancellationTokenSource = new CancellationTokenSource();
 Console.CancelKeyPress += (sender, eventArgs) =>
@@ -20,6 +21,7 @@ Console.WriteLine("[SERVER] Database initialized.");
 
 var matchStore = new SqliteMatchHistoryStore(dbPath);
 var playerRecordStore = new SqlitePlayerRecordStore(dbPath);
+var userAccountStore = new SqliteUserAccountStore(dbPath);
 
 var registry = new ClientSessionRegistry();
 var roomManager = new RoomManager();
@@ -28,7 +30,8 @@ var dispatcher = new GameMessageDispatcher(
     roomManager,
     registry,
     matchStore,
-    playerRecordStore);
+    playerRecordStore,
+    userAccountStore);
 
 var server = new SocketServer(registry, dispatcher);
 

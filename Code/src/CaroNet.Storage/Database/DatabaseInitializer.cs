@@ -25,9 +25,30 @@ public sealed class DatabaseInitializer
             """;
         pragmaCommand.ExecuteNonQuery();
 
+        CreateUsersTable(connection);
         CreateMatchesTable(connection);
         CreateMatchMovesTable(connection);
         CreatePlayerRecordsTable(connection);
+        EnsureMatchUserColumns(connection);
+    }
+
+    private static void CreateUsersTable(SqliteConnection connection)
+    {
+        const string sql =
+            """
+            CREATE TABLE IF NOT EXISTS Users
+            (
+                UserId TEXT PRIMARY KEY,
+                Username TEXT NOT NULL UNIQUE COLLATE NOCASE,
+                DisplayName TEXT NOT NULL,
+                PasswordHash TEXT NOT NULL,
+                CreatedAtUtc TEXT NOT NULL
+            );
+            """;
+
+        using var command = connection.CreateCommand();
+        command.CommandText = sql;
+        command.ExecuteNonQuery();
     }
 
     private static void CreateMatchesTable(SqliteConnection connection)
@@ -40,6 +61,9 @@ public sealed class DatabaseInitializer
                 RoomId TEXT NOT NULL,
                 PlayerXName TEXT NOT NULL,
                 PlayerOName TEXT NOT NULL,
+                PlayerXUserId TEXT,
+                PlayerOUserId TEXT,
+                WinnerUserId TEXT,
                 WinnerName TEXT,
                 StartedAtUtc TEXT NOT NULL,
                 EndedAtUtc TEXT NOT NULL
@@ -49,6 +73,36 @@ public sealed class DatabaseInitializer
         using var command = connection.CreateCommand();
         command.CommandText = sql;
         command.ExecuteNonQuery();
+    }
+
+    private static void EnsureMatchUserColumns(SqliteConnection connection)
+    {
+        AddColumnIfMissing(connection, "Matches", "PlayerXUserId", "TEXT");
+        AddColumnIfMissing(connection, "Matches", "PlayerOUserId", "TEXT");
+        AddColumnIfMissing(connection, "Matches", "WinnerUserId", "TEXT");
+    }
+
+    private static void AddColumnIfMissing(
+        SqliteConnection connection,
+        string tableName,
+        string columnName,
+        string columnType)
+    {
+        using var checkCommand = connection.CreateCommand();
+        checkCommand.CommandText = $"PRAGMA table_info({tableName});";
+
+        using SqliteDataReader reader = checkCommand.ExecuteReader();
+        while (reader.Read())
+        {
+            if (string.Equals(reader.GetString(1), columnName, StringComparison.OrdinalIgnoreCase))
+            {
+                return;
+            }
+        }
+
+        using var alterCommand = connection.CreateCommand();
+        alterCommand.CommandText = $"ALTER TABLE {tableName} ADD COLUMN {columnName} {columnType};";
+        alterCommand.ExecuteNonQuery();
     }
 
     private static void CreateMatchMovesTable(SqliteConnection connection)

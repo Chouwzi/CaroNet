@@ -36,11 +36,10 @@ public sealed partial class HistoryPage : Page
         }
         catch (Exception ex)
         {
-            // Đúng yêu cầu: Hiển thị hộp thoại báo lỗi tại tầng UI thay vì làm sập app
             var dialog = new ContentDialog
             {
-                Title = "Lỗi kết nối Cơ sở dữ liệu",
-                Content = $"Không thể tải lịch sử trận đấu do lỗi kết nối database.\n\nChi tiết: {ex.Message}",
+                Title = "Lỗi",
+                Content = $"Không thể tải lịch sử trận đấu.\n\nChi tiết: {ex.Message}",
                 CloseButtonText = "OK",
                 XamlRoot = this.XamlRoot
             };
