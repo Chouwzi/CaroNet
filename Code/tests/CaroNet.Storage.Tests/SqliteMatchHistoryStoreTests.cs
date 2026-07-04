@@ -82,6 +82,34 @@ public sealed class SqliteMatchHistoryStoreTests
         Assert.Equal(aliceMatch.MatchId, matches[0].MatchId);
     }
 
+    [Fact]
+    public async Task GetMatchesByUserIdAsync_chi_tra_tran_co_user_id_hop_le()
+    {
+        using var database = TemporarySqliteDatabase.Create();
+        var store = new SqliteMatchHistoryStore(database.Path);
+        Guid aliceUserId = Guid.NewGuid();
+        Guid bobUserId = Guid.NewGuid();
+
+        MatchRecord aliceMatch = CreateCompletedMatch(Guid.NewGuid(), "ROOM-A", "Alice", "Bob", "Alice")
+            with
+            {
+                PlayerXUserId = aliceUserId,
+                PlayerOUserId = bobUserId,
+                WinnerUserId = aliceUserId
+            };
+        MatchRecord oldMatchWithoutUserId = CreateCompletedMatch(Guid.NewGuid(), "ROOM-OLD", "Alice", "Carol", "Alice");
+
+        await store.SaveMatchAsync(aliceMatch);
+        await store.SaveMatchAsync(oldMatchWithoutUserId);
+
+        IReadOnlyList<MatchRecord> matches = await store.GetMatchesByUserIdAsync(aliceUserId);
+
+        Assert.Single(matches);
+        Assert.Equal(aliceMatch.MatchId, matches[0].MatchId);
+        Assert.Equal(aliceUserId, matches[0].PlayerXUserId);
+        Assert.Equal(aliceUserId, matches[0].WinnerUserId);
+    }
+
     private static MatchRecord CreateCompletedMatch(
         Guid matchId,
         string roomId,

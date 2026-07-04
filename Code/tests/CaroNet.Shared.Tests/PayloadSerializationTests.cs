@@ -128,4 +128,30 @@ public sealed class PayloadSerializationTests
         Assert.NotNull(join);
         Assert.Equal("123456", join!.RoomId);
     }
+
+    [Fact]
+    public void TopRecordsReceivedPayload_Serializes_With_CamelCase_PropertyNames()
+    {
+        var payload = new TopRecordsReceivedPayload
+        {
+            Players =
+            [
+                new TopPlayerRecordPayload
+                {
+                    PlayerName = "Alice",
+                    Wins = 3,
+                    Losses = 1,
+                    Draws = 0
+                }
+            ]
+        };
+
+        JsonElement element = JsonSerializer.SerializeToElement(payload);
+        string json = element.GetRawText();
+
+        Assert.Contains("\"players\"", json);
+        Assert.Contains("\"playerName\"", json);
+        Assert.Contains("\"wins\"", json);
+        Assert.DoesNotContain("\"PlayerName\"", json);
+    }
 }

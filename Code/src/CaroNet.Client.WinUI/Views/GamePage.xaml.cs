@@ -1,20 +1,45 @@
 using CaroNet.Client.WinUI.Services;
 using CaroNet.Client.WinUI.ViewModels;
+using CaroNet.Shared.Game;
 using Microsoft.UI;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
 using Microsoft.UI.Xaml.Data;
+using Microsoft.UI.Xaml.Input;
 using Microsoft.UI.Xaml.Media;
+using Microsoft.UI.Xaml.Media.Animation;
 using System;
 using System.Linq;
 using System.Threading.Tasks;
+using Windows.ApplicationModel.DataTransfer;
+using Windows.System;
 
 namespace CaroNet.Client.WinUI.Views;
 
 public sealed partial class GamePage : Page
 {
+    private const string MaterialSymbolsFont =
+        "ms-appx:///Assets/Fonts/MaterialSymbolsRounded.ttf#Material Symbols Rounded";
+    private const int TurnCountdownSeconds = 30;
+    private static readonly SolidColorBrush BoardCellBackgroundBrush =
+        new(Colors.Transparent);
+    private static readonly SolidColorBrush BoardCellBorderBrush =
+        new(ColorHelper.FromArgb(64, 138, 145, 154));
+    private static readonly SolidColorBrush BoardCellHoverBackgroundBrush =
+        new(ColorHelper.FromArgb(72, 78, 163, 255));
+    private static readonly SolidColorBrush BoardCellHoverBorderBrush =
+        new(ColorHelper.FromArgb(180, 78, 163, 255));
+
     private readonly GameViewModel _viewModel;
+    private readonly DispatcherTimer _turnCountdownTimer;
     private bool _gameEndDialogShowing;
+    private bool _drawOfferDialogShowing;
+    private bool _rematchRequestDialogShowing;
+    private bool _wasGameEnded;
+    private int _turnSecondsRemaining = TurnCountdownSeconds;
+    private int _copyRoomFeedbackVersion;
+    private string _lastTurnCountdownKey = string.Empty;
+    private BoardPosition? _lastAnimatedMove;
 
     public GamePage()
     {
@@ -29,11 +54,36 @@ public sealed partial class GamePage : Page
 
         _viewModel.ChatMessages.CollectionChanged += ChatMessages_CollectionChanged;
         _viewModel.PropertyChanged += ViewModel_PropertyChanged;
+        _viewModel.DrawOfferReceived += ViewModel_DrawOfferReceived;
 
+        _turnCountdownTimer = new DispatcherTimer
+        {
+            Interval = TimeSpan.FromSeconds(1)
+        };
+        _turnCountdownTimer.Tick += TurnCountdownTimer_Tick;
+
+        Loaded += GamePage_Loaded;
+        Unloaded += GamePage_Unloaded;
+    }
+
+    private void GamePage_Loaded(object sender, RoutedEventArgs e)
+    {
+        // Chờ control trong XAML sẵn sàng rồi mới dựng bàn cờ.
         EmptyStateTextBlock.Visibility = Visibility.Visible;
 
         BuildBoard();
         UpdateTurnUI();
+    }
+
+    private void GamePage_Unloaded(object sender, RoutedEventArgs e)
+    {
+        Loaded -= GamePage_Loaded;
+        Unloaded -= GamePage_Unloaded;
+        _viewModel.ChatMessages.CollectionChanged -= ChatMessages_CollectionChanged;
+        _viewModel.PropertyChanged -= ViewModel_PropertyChanged;
+        _viewModel.DrawOfferReceived -= ViewModel_DrawOfferReceived;
+        _turnCountdownTimer.Stop();
+        _turnCountdownTimer.Tick -= TurnCountdownTimer_Tick;
     }
 
     private async void ViewModel_PropertyChanged(
@@ -41,16 +91,32 @@ public sealed partial class GamePage : Page
         System.ComponentModel.PropertyChangedEventArgs e)
     {
         if (e.PropertyName == nameof(GameViewModel.IsMyTurn) ||
+            e.PropertyName == nameof(GameViewModel.IsOpponentTurn) ||
             e.PropertyName == nameof(GameViewModel.TurnMessage) ||
             e.PropertyName == nameof(GameViewModel.IsGameEnded) ||
-            e.PropertyName == nameof(GameViewModel.ConnectionStatus))
+            e.PropertyName == nameof(GameViewModel.ConnectionStatus) ||
+            e.PropertyName == nameof(GameViewModel.CurrentTurnSymbol) ||
+            e.PropertyName == nameof(GameViewModel.HasOpponent))
         {
             UpdateTurnUI();
+        }
+
+        if (e.PropertyName == nameof(GameViewModel.LastMovePosition))
+        {
+            AnimateLastMoveCell();
+        }
+
+        if (e.PropertyName == nameof(GameViewModel.HasPendingRematchRequest) &&
+            _viewModel.HasPendingRematchRequest)
+        {
+            await ShowRematchRequestDialogAsync();
+            return;
         }
 
         if (e.PropertyName == nameof(GameViewModel.ConnectionStatus) &&
             _viewModel.ConnectionStatus.StartsWith("Trận đấu mới", StringComparison.Ordinal))
         {
+            _wasGameEnded = false;
             BuildBoard();
             UpdateTurnUI();
             return;
@@ -63,16 +129,27 @@ public sealed partial class GamePage : Page
             return;
         }
 
-        if ((e.PropertyName == nameof(GameViewModel.IsGameEnded) ||
-             e.PropertyName == nameof(GameViewModel.ConnectionStatus) ||
-             e.PropertyName == nameof(GameViewModel.ServerError)) &&
+        if (e.PropertyName == nameof(GameViewModel.IsGameEnded) &&
+            !_viewModel.IsGameEnded)
+        {
+            _wasGameEnded = false;
+            return;
+        }
+
+        if (e.PropertyName == nameof(GameViewModel.IsGameEnded) &&
             _viewModel.IsGameEnded &&
+            !_wasGameEnded &&
             !_gameEndDialogShowing)
         {
+            _wasGameEnded = true;
             _gameEndDialogShowing = true;
             HighlightWinningCellsOnUI();
             await ShowGameEndedDialogAsync();
             _gameEndDialogShowing = false;
+            if (_viewModel.HasPendingRematchRequest)
+            {
+                await ShowRematchRequestDialogAsync();
+            }
         }
     }
 
@@ -110,6 +187,99 @@ public sealed partial class GamePage : Page
         await _viewModel.SendChatAsync();
     }
 
+    private async void ChatInputTextBox_KeyDown(object sender, KeyRoutedEventArgs e)
+    {
+        if (e.Key != VirtualKey.Enter || !_viewModel.IsSendButtonEnabled)
+        {
+            return;
+        }
+
+        e.Handled = true;
+        await _viewModel.SendChatAsync();
+    }
+
+    private async void CopyRoomIdButton_Click(object sender, RoutedEventArgs e)
+    {
+        if (string.IsNullOrWhiteSpace(_viewModel.RoomId))
+        {
+            return;
+        }
+
+        var package = new DataPackage();
+        package.SetText(_viewModel.RoomId);
+        Clipboard.SetContent(package);
+
+        int feedbackVersion = ++_copyRoomFeedbackVersion;
+        CopyRoomIdIconTextBlock.Text = "check";
+        ToolTipService.SetToolTip(CopyRoomIdButton, "Đã sao chép");
+
+        await Task.Delay(1200);
+
+        if (feedbackVersion == _copyRoomFeedbackVersion)
+        {
+            CopyRoomIdIconTextBlock.Text = "content_copy";
+            ToolTipService.SetToolTip(CopyRoomIdButton, "Sao chép mã phòng");
+        }
+    }
+
+    private async void DrawOfferButton_Click(object sender, RoutedEventArgs e)
+    {
+        await _viewModel.SendDrawOfferAsync();
+    }
+
+    private async void ResignButton_Click(object sender, RoutedEventArgs e)
+    {
+        await ShowResignConfirmationDialogAsync();
+    }
+
+    private async void RematchButton_Click(object sender, RoutedEventArgs e)
+    {
+        await _viewModel.SendRematchRequestAsync();
+    }
+
+    private async void BackToMenuButton_Click(object sender, RoutedEventArgs e)
+    {
+        await LeaveMatchAndReturnToMenuAsync();
+    }
+
+    private async void ViewModel_DrawOfferReceived(object? sender, DrawOfferReceivedEventArgs e)
+    {
+        if (_drawOfferDialogShowing || _gameEndDialogShowing)
+        {
+            return;
+        }
+
+        _drawOfferDialogShowing = true;
+
+        try
+        {
+            var dialog = new ContentDialog
+            {
+                Title = "Đối thủ xin hòa",
+                Content = $"{e.SenderName} muốn kết thúc ván bằng kết quả hòa.",
+                PrimaryButtonText = "Đồng ý hòa",
+                SecondaryButtonText = "Từ chối",
+                CloseButtonText = "Để sau",
+                DefaultButton = ContentDialogButton.Close,
+                XamlRoot = this.XamlRoot
+            };
+
+            ContentDialogResult result = await dialog.ShowAsync();
+            if (result == ContentDialogResult.Primary)
+            {
+                await _viewModel.SendDrawResponseAsync(accepted: true);
+            }
+            else if (result == ContentDialogResult.Secondary)
+            {
+                await _viewModel.SendDrawResponseAsync(accepted: false);
+            }
+        }
+        finally
+        {
+            _drawOfferDialogShowing = false;
+        }
+    }
+
     private void BuildBoard()
     {
         BoardGrid.RowDefinitions.Clear();
@@ -127,8 +297,36 @@ public sealed partial class GamePage : Page
             var cellContent = new Grid
             {
                 DataContext = cell,
-                IsHitTestVisible = false
+                IsHitTestVisible = false,
+                HorizontalAlignment = HorizontalAlignment.Stretch,
+                VerticalAlignment = VerticalAlignment.Stretch
             };
+
+            var lastMoveOverlay = new Border
+            {
+                Background = new SolidColorBrush(ColorHelper.FromArgb(96, 216, 162, 58)),
+                HorizontalAlignment = HorizontalAlignment.Stretch,
+                VerticalAlignment = VerticalAlignment.Stretch
+            };
+
+            lastMoveOverlay.SetBinding(UIElement.OpacityProperty, new Binding
+            {
+                Path = new PropertyPath(nameof(BoardCellViewModel.LastMoveHighlightOpacity)),
+                Mode = BindingMode.OneWay,
+            });
+
+            var winningOverlay = new Border
+            {
+                Background = new SolidColorBrush(ColorHelper.FromArgb(142, 62, 133, 88)),
+                HorizontalAlignment = HorizontalAlignment.Stretch,
+                VerticalAlignment = VerticalAlignment.Stretch
+            };
+
+            winningOverlay.SetBinding(UIElement.OpacityProperty, new Binding
+            {
+                Path = new PropertyPath(nameof(BoardCellViewModel.WinningCellOverlayOpacity)),
+                Mode = BindingMode.OneWay,
+            });
 
             var markText = new TextBlock
             {
@@ -144,15 +342,22 @@ public sealed partial class GamePage : Page
                 Mode = BindingMode.OneWay,
             });
 
+            markText.SetBinding(TextBlock.ForegroundProperty, new Binding
+            {
+                Path = new PropertyPath(nameof(BoardCellViewModel.Mark)),
+                Converter = (IValueConverter)Resources["BoardMarkForegroundConverter"],
+                Mode = BindingMode.OneWay,
+            });
+
             var lastMoveDot = new Border
             {
-                Width = 8,
-                Height = 8,
-                CornerRadius = new CornerRadius(4),
-                Background = new SolidColorBrush(Colors.Red),
+                Width = 7,
+                Height = 7,
+                CornerRadius = new CornerRadius(3.5),
+                Background = new SolidColorBrush(ColorHelper.FromArgb(255, 229, 72, 77)),
                 HorizontalAlignment = HorizontalAlignment.Right,
-                VerticalAlignment = VerticalAlignment.Top,
-                Margin = new Thickness(0, 3, 3, 0)
+                VerticalAlignment = VerticalAlignment.Bottom,
+                Margin = new Thickness(0, 0, 4, 4)
             };
 
             lastMoveDot.SetBinding(UIElement.OpacityProperty, new Binding
@@ -161,69 +366,125 @@ public sealed partial class GamePage : Page
                 Mode = BindingMode.OneWay,
             });
 
+            cellContent.Children.Add(lastMoveOverlay);
+            cellContent.Children.Add(winningOverlay);
             cellContent.Children.Add(markText);
             cellContent.Children.Add(lastMoveDot);
 
-            var button = new Button
+            var cellBorder = new Border
             {
                 DataContext = cell,
-                Content = cellContent,
-                Style = (Style)Resources["BoardCellButtonStyle"],
+                Child = cellContent,
+                Background = BoardCellBackgroundBrush,
+                BorderBrush = BoardCellBorderBrush,
+                BorderThickness = new Thickness(0, 0, 1, 1),
+                HorizontalAlignment = HorizontalAlignment.Stretch,
+                VerticalAlignment = VerticalAlignment.Stretch,
             };
 
-            button.SetBinding(Control.IsEnabledProperty, new Binding
-            {
-                Path = new PropertyPath(nameof(BoardCellViewModel.IsInteractionEnabled)),
-                Mode = BindingMode.OneWay,
-            });
+            cellBorder.PointerEntered += BoardCell_PointerEntered;
+            cellBorder.PointerExited += BoardCell_PointerExited;
+            cellBorder.Tapped += BoardCell_Tapped;
 
-            button.Click += BoardCellButton_Click;
-
-            Grid.SetRow(button, cell.Row);
-            Grid.SetColumn(button, cell.Column);
-            BoardGrid.Children.Add(button);
+            Grid.SetRow(cellBorder, cell.Row);
+            Grid.SetColumn(cellBorder, cell.Column);
+            BoardGrid.Children.Add(cellBorder);
         }
     }
 
-    private async void BoardCellButton_Click(object sender, RoutedEventArgs e)
+    private async void BoardCell_Tapped(object sender, TappedRoutedEventArgs e)
     {
         if (!_viewModel.IsMyTurn || _viewModel.IsGameEnded)
         {
             return;
         }
 
-        if (sender is Button { DataContext: BoardCellViewModel cell })
+        if (sender is Border { DataContext: BoardCellViewModel cell } &&
+            string.IsNullOrWhiteSpace(cell.Mark))
         {
             await _viewModel.MakeMoveAsync(cell.Row, cell.Column);
+        }
+    }
+
+    private void BoardCell_PointerEntered(object sender, PointerRoutedEventArgs e)
+    {
+        if (sender is Border cellBorder && CanPreviewMove(cellBorder))
+        {
+            cellBorder.Background = BoardCellHoverBackgroundBrush;
+            cellBorder.BorderBrush = BoardCellHoverBorderBrush;
+        }
+    }
+
+    private void BoardCell_PointerExited(object sender, PointerRoutedEventArgs e)
+    {
+        if (sender is Border cellBorder)
+        {
+            ResetBoardCellChrome(cellBorder);
         }
     }
 
     private void UpdateTurnUI()
     {
         bool canPlay = _viewModel.IsMyTurn && !_viewModel.IsGameEnded;
+        bool isEnded = _viewModel.IsGameEnded;
 
         if (TurnBanner != null)
         {
-            if (canPlay)
+            if (isEnded)
             {
-                TurnBanner.Background = new SolidColorBrush(ColorHelper.FromArgb(255, 232, 245, 233));
-                TurnBanner.BorderBrush = new SolidColorBrush(ColorHelper.FromArgb(255, 165, 214, 167));
+                TurnBanner.Background = new SolidColorBrush(ColorHelper.FromArgb(255, 72, 55, 36));
+                TurnBanner.BorderBrush = new SolidColorBrush(ColorHelper.FromArgb(255, 176, 138, 74));
+                TurnBannerTextBlock.Foreground = new SolidColorBrush(ColorHelper.FromArgb(255, 255, 241, 214));
+            }
+            else if (canPlay)
+            {
+                TurnBanner.Background = new SolidColorBrush(ColorHelper.FromArgb(255, 33, 77, 54));
+                TurnBanner.BorderBrush = new SolidColorBrush(ColorHelper.FromArgb(255, 95, 168, 120));
+                TurnBannerTextBlock.Foreground = new SolidColorBrush(ColorHelper.FromArgb(255, 240, 255, 244));
             }
             else
             {
-                TurnBanner.Background = new SolidColorBrush(ColorHelper.FromArgb(255, 245, 245, 245));
-                TurnBanner.BorderBrush = new SolidColorBrush(ColorHelper.FromArgb(255, 189, 189, 189));
+                TurnBanner.Background = new SolidColorBrush(ColorHelper.FromArgb(255, 48, 52, 59));
+                TurnBanner.BorderBrush = new SolidColorBrush(ColorHelper.FromArgb(255, 98, 104, 115));
+                TurnBannerTextBlock.Foreground = new SolidColorBrush(ColorHelper.FromArgb(255, 242, 244, 248));
             }
         }
 
         var boardBorder = BoardGrid?.Parent as Border;
         if (boardBorder != null)
         {
-            boardBorder.BorderBrush = canPlay
-                ? new SolidColorBrush(ColorHelper.FromArgb(255, 76, 175, 80))
-                : new SolidColorBrush(ColorHelper.FromArgb(255, 158, 158, 158));
+            boardBorder.BorderBrush = isEnded
+                ? new SolidColorBrush(ColorHelper.FromArgb(255, 176, 138, 74))
+                : canPlay
+                    ? new SolidColorBrush(ColorHelper.FromArgb(255, 95, 168, 120))
+                    : new SolidColorBrush(ColorHelper.FromArgb(255, 98, 104, 115));
         }
 
+        if (BoardGrid is null)
+        {
+            UpdateTurnCountdown();
+            return;
+        }
+
+        foreach (var child in BoardGrid.Children)
+        {
+            if (child is not Border cellBorder)
+            {
+                continue;
+            }
+
+            bool isEmptyCell = cellBorder.DataContext is BoardCellViewModel cell &&
+                string.IsNullOrWhiteSpace(cell.Mark);
+            cellBorder.IsHitTestVisible = canPlay && isEmptyCell;
+            cellBorder.Opacity = isEnded || canPlay ? 1.0 : 0.72;
+            ResetBoardCellChrome(cellBorder);
+        }
+
+        UpdateTurnCountdown();
+    }
+
+    private void HighlightWinningCellsOnUI()
+    {
         if (BoardGrid is null)
         {
             return;
@@ -231,38 +492,278 @@ public sealed partial class GamePage : Page
 
         foreach (var child in BoardGrid.Children)
         {
-            if (child is not Button button)
+            if (child is not Border cellBorder)
             {
                 continue;
             }
 
-            button.IsHitTestVisible = canPlay;
-            button.Opacity = canPlay ? 1.0 : 0.65;
+            if (cellBorder.DataContext is BoardCellViewModel { IsWinningCell: true })
+            {
+                AnimateElementOpacity(cellBorder, 0.72, 1.0, 260);
+            }
         }
     }
 
-    private void HighlightWinningCellsOnUI()
+    private void TurnCountdownTimer_Tick(object? sender, object e)
     {
-        if (AppServices.GameClient is not SocketGameClientService socketService ||
-            socketService.WinningCells.Count == 0)
+        if (_turnSecondsRemaining > 0)
+        {
+            _turnSecondsRemaining--;
+        }
+
+        UpdateTimerText();
+
+        if (_turnSecondsRemaining == 0)
+        {
+            _turnCountdownTimer.Stop();
+        }
+    }
+
+    private void UpdateTurnCountdown()
+    {
+        bool isActive =
+            !string.IsNullOrWhiteSpace(_viewModel.RoomId) &&
+            _viewModel.HasOpponent &&
+            !_viewModel.IsGameEnded &&
+            (_viewModel.IsMyTurn || _viewModel.IsOpponentTurn);
+
+        string countdownKey = isActive
+            ? string.Join(
+                ":",
+                _viewModel.RoomId,
+                _viewModel.CurrentTurnSymbol,
+                _viewModel.LastMovePosition?.Row.ToString() ?? "-",
+                _viewModel.LastMovePosition?.Column.ToString() ?? "-",
+                _viewModel.ConnectionStatus)
+            : "inactive";
+
+        if (!isActive)
+        {
+            _turnCountdownTimer.Stop();
+            _lastTurnCountdownKey = countdownKey;
+            _turnSecondsRemaining = TurnCountdownSeconds;
+            UpdateTimerText();
+            return;
+        }
+
+        if (!string.Equals(_lastTurnCountdownKey, countdownKey, StringComparison.Ordinal))
+        {
+            _lastTurnCountdownKey = countdownKey;
+            _turnSecondsRemaining = TurnCountdownSeconds;
+        }
+
+        if (!_turnCountdownTimer.IsEnabled)
+        {
+            _turnCountdownTimer.Start();
+        }
+
+        UpdateTimerText();
+    }
+
+    private void UpdateTimerText()
+    {
+        if (MyTimerTextBlock is null || OpponentTimerTextBlock is null)
         {
             return;
         }
 
+        if (_viewModel.IsGameEnded)
+        {
+            ApplyTimerText(MyTimerTextBlock, "Kết thúc", isActive: false, isEnded: true);
+            ApplyTimerText(OpponentTimerTextBlock, "Kết thúc", isActive: false, isEnded: true);
+            return;
+        }
+
+        if (!_viewModel.HasOpponent || string.IsNullOrWhiteSpace(_viewModel.RoomId))
+        {
+            ApplyTimerText(MyTimerTextBlock, "--", isActive: false, isEnded: false);
+            ApplyTimerText(OpponentTimerTextBlock, "--", isActive: false, isEnded: false);
+            return;
+        }
+
+        string secondsText = $"{_turnSecondsRemaining}s";
+        ApplyTimerText(MyTimerTextBlock, _viewModel.IsMyTurn ? secondsText : "--", _viewModel.IsMyTurn, isEnded: false);
+        ApplyTimerText(OpponentTimerTextBlock, _viewModel.IsOpponentTurn ? secondsText : "--", _viewModel.IsOpponentTurn, isEnded: false);
+    }
+
+    private static void ApplyTimerText(TextBlock textBlock, string text, bool isActive, bool isEnded)
+    {
+        textBlock.Text = text;
+        textBlock.Foreground = isEnded
+            ? new SolidColorBrush(ColorHelper.FromArgb(255, 214, 199, 161))
+            : isActive
+                ? new SolidColorBrush(ColorHelper.FromArgb(255, 255, 214, 102))
+                : new SolidColorBrush(ColorHelper.FromArgb(255, 170, 176, 186));
+    }
+
+    private void AnimateLastMoveCell()
+    {
+        if (_viewModel.LastMovePosition is not { } move)
+        {
+            _lastAnimatedMove = null;
+            return;
+        }
+
+        if (_lastAnimatedMove == move)
+        {
+            return;
+        }
+
+        _lastAnimatedMove = move;
+
+        if (FindBoardCell(move.Row, move.Column) is FrameworkElement cellElement)
+        {
+            AnimateElementOpacity(cellElement, 0.78, 1.0, 180);
+        }
+    }
+
+    private FrameworkElement? FindBoardCell(int row, int column)
+    {
+        if (BoardGrid is null)
+        {
+            return null;
+        }
+
         foreach (var child in BoardGrid.Children)
         {
-            if (child is not Button button)
+            if (child is FrameworkElement cellElement &&
+                Grid.GetRow(cellElement) == row &&
+                Grid.GetColumn(cellElement) == column)
             {
-                continue;
+                return cellElement;
             }
+        }
 
-            int row = Grid.GetRow(button);
-            int column = Grid.GetColumn(button);
-            if (socketService.WinningCells.Any(cell => cell.Row == row && cell.Col == column))
+        return null;
+    }
+
+    private bool CanPreviewMove(Border cellBorder)
+    {
+        return _viewModel.IsMyTurn &&
+            !_viewModel.IsGameEnded &&
+            cellBorder.DataContext is BoardCellViewModel cell &&
+            string.IsNullOrWhiteSpace(cell.Mark);
+    }
+
+    private static void ResetBoardCellChrome(Border cellBorder)
+    {
+        cellBorder.Background = BoardCellBackgroundBrush;
+        cellBorder.BorderBrush = BoardCellBorderBrush;
+    }
+
+    private static void AnimateElementOpacity(UIElement element, double from, double to, int milliseconds)
+    {
+        var animation = new DoubleAnimation
+        {
+            From = from,
+            To = to,
+            Duration = new Duration(TimeSpan.FromMilliseconds(milliseconds)),
+            EasingFunction = new CubicEase { EasingMode = EasingMode.EaseOut }
+        };
+
+        Storyboard.SetTarget(animation, element);
+        Storyboard.SetTargetProperty(animation, nameof(UIElement.Opacity));
+
+        var storyboard = new Storyboard();
+        storyboard.Children.Add(animation);
+        storyboard.Begin();
+    }
+
+    private async Task ShowRematchRequestDialogAsync()
+    {
+        if (_rematchRequestDialogShowing ||
+            _gameEndDialogShowing ||
+            !_viewModel.HasPendingRematchRequest)
+        {
+            return;
+        }
+
+        _rematchRequestDialogShowing = true;
+
+        try
+        {
+            var dialog = new ContentDialog
             {
-                button.Background = new SolidColorBrush(Colors.Yellow);
-                button.FontWeight = Microsoft.UI.Text.FontWeights.Bold;
+                Title = "Đối thủ muốn chơi lại",
+                Content = "Bạn có thể bắt đầu ván mới ngay hoặc tiếp tục xem lại bàn cờ hiện tại.",
+                PrimaryButtonText = "Chơi lại",
+                CloseButtonText = "Xem tiếp",
+                DefaultButton = ContentDialogButton.Primary,
+                XamlRoot = this.XamlRoot
+            };
+
+            ContentDialogResult result = await dialog.ShowAsync();
+            if (result == ContentDialogResult.Primary)
+            {
+                await _viewModel.SendRematchRequestAsync();
             }
+        }
+        finally
+        {
+            _rematchRequestDialogShowing = false;
+        }
+    }
+
+    private async Task LeaveMatchAndReturnToMenuAsync()
+    {
+        if (string.IsNullOrWhiteSpace(_viewModel.RoomId))
+        {
+            Frame.Navigate(typeof(MainMenuPage));
+            return;
+        }
+
+        if (_viewModel.IsGameEnded)
+        {
+            await _viewModel.LeaveRoomAsync();
+            Frame.Navigate(typeof(MainMenuPage));
+            return;
+        }
+
+        string title = _viewModel.HasOpponent
+            ? "Rời ván đấu?"
+            : "Rời phòng?";
+        string content = _viewModel.HasOpponent && !_viewModel.IsGameEnded
+            ? "Ván đang diễn ra. Nếu rời bây giờ, bạn sẽ đầu hàng và đối thủ được tính thắng."
+            : _viewModel.HasOpponent
+                ? "Bạn sẽ rời phòng hiện tại. Đối thủ sẽ được thông báo rằng bạn đã rời phòng."
+                : "Bạn đang ở phòng một mình. Nếu rời bây giờ, phòng sẽ được xóa khỏi server.";
+
+        var dialog = new ContentDialog
+        {
+            Title = title,
+            Content = content,
+            PrimaryButtonText = _viewModel.HasOpponent ? "Rời ván" : "Rời phòng",
+            CloseButtonText = "Ở lại",
+            DefaultButton = ContentDialogButton.Close,
+            XamlRoot = this.XamlRoot
+        };
+
+        ContentDialogResult result = await dialog.ShowAsync();
+        if (result != ContentDialogResult.Primary)
+        {
+            return;
+        }
+
+        await _viewModel.LeaveRoomAsync();
+        Frame.Navigate(typeof(MainMenuPage));
+    }
+
+    private async Task ShowResignConfirmationDialogAsync()
+    {
+        var dialog = new ContentDialog
+        {
+            Title = "Đầu hàng ván này?",
+            Content = "Nếu xác nhận, ván đấu sẽ kết thúc ngay và đối thủ được tính thắng.",
+            PrimaryButtonText = "Đầu hàng",
+            CloseButtonText = "Hủy",
+            DefaultButton = ContentDialogButton.Close,
+            XamlRoot = this.XamlRoot
+        };
+
+        ContentDialogResult result = await dialog.ShowAsync();
+        if (result == ContentDialogResult.Primary)
+        {
+            await _viewModel.SendResignAsync();
         }
     }
 
@@ -277,6 +778,7 @@ public sealed partial class GamePage : Page
         };
 
         await dialog.ShowAsync();
+        await _viewModel.LeaveRoomAsync();
         Frame.Navigate(typeof(MainMenuPage));
     }
 
@@ -284,9 +786,22 @@ public sealed partial class GamePage : Page
     {
         string titleText = "Hòa!";
         var iconColor = Colors.DarkGray;
-        string statusIcon = "•";
+        string statusIcon = "radio_button_unchecked";
 
-        if (AppServices.GameClient is SocketGameClientService socketService &&
+        if (_viewModel.ServerError.Contains("Bạn thắng", StringComparison.OrdinalIgnoreCase))
+        {
+            titleText = "Bạn thắng!";
+            statusIcon = "check_circle";
+            iconColor = Colors.Green;
+        }
+        else if (_viewModel.ServerError.Contains("Bạn thua", StringComparison.OrdinalIgnoreCase) ||
+            _viewModel.ServerError.Contains("Bạn đã đầu hàng", StringComparison.OrdinalIgnoreCase))
+        {
+            titleText = "Bạn thua!";
+            statusIcon = "cancel";
+            iconColor = Colors.Red;
+        }
+        else if (AppServices.GameClient is SocketGameClientService socketService &&
             socketService.WinningCells.Count > 0)
         {
             var firstWinCell = socketService.WinningCells.First();
@@ -298,13 +813,13 @@ public sealed partial class GamePage : Page
                 if (matchingCell.Mark == _viewModel.PlayerSymbol)
                 {
                     titleText = "Bạn thắng!";
-                    statusIcon = "✓";
+                    statusIcon = "check_circle";
                     iconColor = Colors.Green;
                 }
                 else
                 {
                     titleText = "Bạn thua!";
-                    statusIcon = "✗";
+                    statusIcon = "cancel";
                     iconColor = Colors.Red;
                 }
             }
@@ -319,9 +834,9 @@ public sealed partial class GamePage : Page
         titleStackPanel.Children.Add(new TextBlock
         {
             Text = statusIcon,
+            FontFamily = new FontFamily(MaterialSymbolsFont),
             Foreground = new SolidColorBrush(iconColor),
             FontSize = 26,
-            FontWeight = Microsoft.UI.Text.FontWeights.Bold,
             VerticalAlignment = VerticalAlignment.Center
         });
 
@@ -339,8 +854,10 @@ public sealed partial class GamePage : Page
             Content = string.IsNullOrEmpty(_viewModel.ServerError)
                 ? "Ván đấu đã khép lại thành công."
                 : _viewModel.ServerError,
-            PrimaryButtonText = "Về menu",
-            SecondaryButtonText = "Chơi lại",
+            PrimaryButtonText = "Chơi lại",
+            SecondaryButtonText = "Về menu",
+            CloseButtonText = "Xem lại bàn cờ",
+            DefaultButton = ContentDialogButton.Close,
             XamlRoot = this.XamlRoot
         };
 
@@ -348,21 +865,112 @@ public sealed partial class GamePage : Page
 
         if (result == ContentDialogResult.Primary)
         {
+            await _viewModel.SendRematchRequestAsync();
+        }
+        else if (result == ContentDialogResult.Secondary)
+        {
+            await _viewModel.LeaveRoomAsync();
             Frame.Navigate(typeof(MainMenuPage));
         }
-        else if (result == ContentDialogResult.Secondary &&
-            AppServices.GameClient is SocketGameClientService clientService)
-        {
-            _viewModel.ConnectionStatus = "Đang chờ đối thủ xác nhận...";
+    }
+}
 
-            try
-            {
-                await clientService.SendRematchRequestAsync();
-            }
-            catch (Exception ex)
-            {
-                _viewModel.ServerError = $"Không thể gửi yêu cầu: {ex.Message}";
-            }
+public sealed class BoolToVisibilityConverter : IValueConverter
+{
+    public object Convert(object value, Type targetType, object parameter, string language)
+    {
+        return value is true ? Visibility.Visible : Visibility.Collapsed;
+    }
+
+    public object ConvertBack(object value, Type targetType, object parameter, string language)
+    {
+        throw new NotSupportedException();
+    }
+}
+
+public sealed class InverseBoolToVisibilityConverter : IValueConverter
+{
+    public object Convert(object value, Type targetType, object parameter, string language)
+    {
+        return value is true ? Visibility.Collapsed : Visibility.Visible;
+    }
+
+    public object ConvertBack(object value, Type targetType, object parameter, string language)
+    {
+        throw new NotSupportedException();
+    }
+}
+
+public sealed class ChatBubbleAlignmentConverter : IValueConverter
+{
+    public object Convert(object value, Type targetType, object parameter, string language)
+    {
+        if (value is GameViewModel.ChatMessageViewModel { IsSystemMessage: true })
+        {
+            return HorizontalAlignment.Center;
         }
+
+        return value is GameViewModel.ChatMessageViewModel { IsOwnMessage: true }
+            ? HorizontalAlignment.Right
+            : HorizontalAlignment.Left;
+    }
+
+    public object ConvertBack(object value, Type targetType, object parameter, string language)
+    {
+        throw new NotSupportedException();
+    }
+}
+
+public sealed class ChatBubbleBackgroundConverter : IValueConverter
+{
+    public object Convert(object value, Type targetType, object parameter, string language)
+    {
+        if (value is GameViewModel.ChatMessageViewModel { IsSystemMessage: true })
+        {
+            return new SolidColorBrush(ColorHelper.FromArgb(255, 70, 81, 95));
+        }
+
+        if (value is GameViewModel.ChatMessageViewModel { IsOwnMessage: true })
+        {
+            return new SolidColorBrush(ColorHelper.FromArgb(255, 47, 95, 141));
+        }
+
+        return new SolidColorBrush(ColorHelper.FromArgb(255, 60, 65, 74));
+    }
+
+    public object ConvertBack(object value, Type targetType, object parameter, string language)
+    {
+        throw new NotSupportedException();
+    }
+}
+
+public sealed class ChatBubbleForegroundConverter : IValueConverter
+{
+    public object Convert(object value, Type targetType, object parameter, string language)
+    {
+        return new SolidColorBrush(Colors.White);
+    }
+
+    public object ConvertBack(object value, Type targetType, object parameter, string language)
+    {
+        throw new NotSupportedException();
+    }
+}
+
+public sealed class BoardMarkForegroundConverter : IValueConverter
+{
+    public object Convert(object value, Type targetType, object parameter, string language)
+    {
+        return value switch
+        {
+            "X" => new SolidColorBrush(ColorHelper.FromArgb(255, 78, 163, 255)),
+            "O" => new SolidColorBrush(ColorHelper.FromArgb(255, 255, 107, 107)),
+            _ => new SolidColorBrush(ColorHelper.FromArgb(255, 242, 244, 248))
+        };
+    }
+
+    public object ConvertBack(object value, Type targetType, object parameter, string language)
+    {
+        throw new NotSupportedException();
     }
 }

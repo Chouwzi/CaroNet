@@ -12,6 +12,15 @@ public enum MessageType
     Heartbeat = 7,
     Reconnect = 8,
     Rematch = 9,
+    Resign = 10,
+    DrawOffer = 11,
+    DrawResponse = 12,
+    LeaveRoom = 13,
+    Register = 14,
+    Login = 15,
+    QuickMatch = 16,
+    MyHistoryRequest = 17,
+    TopRecordsRequest = 18,
 
     // Server -> Client
     HelloAccepted = 50,
@@ -24,6 +33,9 @@ public enum MessageType
     GameEnded = 57,
     ChatReceived = 58,
     RematchAccepted = 59,
+    AuthAccepted = 60,
+    MyHistoryReceived = 61,
+    TopRecordsReceived = 62,
 
     Error = 100
 }

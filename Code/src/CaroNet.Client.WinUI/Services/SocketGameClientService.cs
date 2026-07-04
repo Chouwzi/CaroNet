@@ -4,8 +4,10 @@ using System.Linq;
 using System.Text.Json;
 using System.Threading;
 using System.Threading.Tasks;
+using CaroNet.Client.WinUI.Models;
 using CaroNet.Shared.Game;
 using CaroNet.Shared.Protocol;
+using CaroNet.Shared.Protocol.Payloads;
 
 namespace CaroNet.Client.WinUI.Services;
 
@@ -19,19 +21,32 @@ public sealed class SocketGameClientService : IGameClientService, IAsyncDisposab
 
     private readonly IClientConnection _connection;
     private readonly object _stateLock = new();
+    private readonly SemaphoreSlim _authRequestLock = new(1, 1);
     private readonly SemaphoreSlim _roomRequestLock = new(1, 1);
+    private readonly SemaphoreSlim _historyRequestLock = new(1, 1);
+    private readonly SemaphoreSlim _topRecordsRequestLock = new(1, 1);
+    private TaskCompletionSource<AuthSession>? _authCompletion;
+    private TaskCompletionSource<IReadOnlyList<MatchSummary>>? _historyCompletion;
+    private TaskCompletionSource<IReadOnlyList<PlayerRecordSummary>>? _topRecordsCompletion;
     private TaskCompletionSource<GameViewState>? _roomJoinedCompletion;
     private string _connectionStatus = "Chưa kết nối server";
     private string _currentTurnSymbol = "X";
+    private string _opponentName = "Đối thủ";
     private string _playerId = string.Empty;
     private string _playerName = "Player";
     private string _playerSymbol = "?";
     private string _roomId = string.Empty;
     private string _serverError = string.Empty;
+    private bool _hasOpponent;
+    private int _myScore;
+    private int _opponentScore;
+    private AuthSession? _currentAuth;
     private string[,] _board = InitEmptyBoard();
 
     // Định nghĩa sự kiện nhận Chat từ Socket mạng thật gửi về
     public event EventHandler<CaroNet.Shared.Protocol.Payloads.ChatReceivedPayload>? ChatReceived;
+
+    public event EventHandler<DrawOfferReceivedEventArgs>? DrawOfferReceived;
 
     // Hàm gửi tin nhắn qua Socket lên Server mạng thật
     public async Task SendChatAsync(string message)
@@ -75,6 +90,17 @@ public sealed class SocketGameClientService : IGameClientService, IAsyncDisposab
 
     public GameViewState CurrentState => BuildState();
 
+    public AuthSession? CurrentAuth
+    {
+        get
+        {
+            lock (_stateLock)
+            {
+                return _currentAuth;
+            }
+        }
+    }
+
     public async Task ConnectAsync(
         ConnectionRequest request,
         CancellationToken cancellationToken)
@@ -105,6 +131,76 @@ public sealed class SocketGameClientService : IGameClientService, IAsyncDisposab
         PublishState();
     }
 
+    public async Task<AuthSession> RegisterAsync(
+        string username,
+        string password,
+        string displayName,
+        CancellationToken cancellationToken)
+    {
+        if (!await _authRequestLock.WaitAsync(0, cancellationToken).ConfigureAwait(false))
+        {
+            throw new InvalidOperationException("Hệ thống đang xử lý đăng nhập trước đó. Vui lòng đợi.");
+        }
+
+        try
+        {
+            TaskCompletionSource<AuthSession> completion = PrepareAuthWaiter();
+
+            await _connection.SendAsync(
+                new MessageEnvelope
+                {
+                    Type = MessageType.Register,
+                    Payload = JsonSerializer.SerializeToElement(new AuthRequestPayload
+                    {
+                        Username = username,
+                        Password = password,
+                        DisplayName = displayName
+                    })
+                },
+                cancellationToken);
+
+            return await WaitForAuthAsync(completion, cancellationToken);
+        }
+        finally
+        {
+            _authRequestLock.Release();
+        }
+    }
+
+    public async Task<AuthSession> LoginAsync(
+        string username,
+        string password,
+        CancellationToken cancellationToken)
+    {
+        if (!await _authRequestLock.WaitAsync(0, cancellationToken).ConfigureAwait(false))
+        {
+            throw new InvalidOperationException("Hệ thống đang xử lý đăng nhập trước đó. Vui lòng đợi.");
+        }
+
+        try
+        {
+            TaskCompletionSource<AuthSession> completion = PrepareAuthWaiter();
+
+            await _connection.SendAsync(
+                new MessageEnvelope
+                {
+                    Type = MessageType.Login,
+                    Payload = JsonSerializer.SerializeToElement(new AuthRequestPayload
+                    {
+                        Username = username,
+                        Password = password
+                    })
+                },
+                cancellationToken);
+
+            return await WaitForAuthAsync(completion, cancellationToken);
+        }
+        finally
+        {
+            _authRequestLock.Release();
+        }
+    }
+
     public async Task<GameViewState> CreateRoomAsync(CancellationToken cancellationToken)
     {
         // Thử chiếm chốt chặn ngay lập tức (0ms). Nếu thất bại = đang có request chạy ngầm.
@@ -132,6 +228,92 @@ public sealed class SocketGameClientService : IGameClientService, IAsyncDisposab
         {
             // Luôn luôn mở khóa chốt chặn khi kết thúc (kể cả thành công, thất bại hay timeout)
             _roomRequestLock.Release();
+        }
+    }
+
+    public async Task<GameViewState> QuickMatchAsync(CancellationToken cancellationToken)
+    {
+        if (!await _roomRequestLock.WaitAsync(0, cancellationToken).ConfigureAwait(false))
+        {
+            throw new InvalidOperationException("Hệ thống đang xử lý yêu cầu vào phòng trước đó. Vui lòng đợi.");
+        }
+
+        try
+        {
+            TaskCompletionSource<GameViewState> completion = PrepareRoomJoinWaiter();
+
+            await _connection.SendAsync(
+                new MessageEnvelope
+                {
+                    Type = MessageType.QuickMatch,
+                    PlayerId = EmptyToNull(_playerId),
+                    Payload = JsonSerializer.SerializeToElement(new { })
+                },
+                cancellationToken);
+
+            return await WaitForRoomJoinedAsync(completion, cancellationToken);
+        }
+        finally
+        {
+            _roomRequestLock.Release();
+        }
+    }
+
+    public async Task<IReadOnlyList<MatchSummary>> GetMyHistoryAsync(
+        CancellationToken cancellationToken)
+    {
+        if (!await _historyRequestLock.WaitAsync(0, cancellationToken).ConfigureAwait(false))
+        {
+            throw new InvalidOperationException("Hệ thống đang tải lịch sử. Vui lòng đợi.");
+        }
+
+        try
+        {
+            TaskCompletionSource<IReadOnlyList<MatchSummary>> completion = PrepareHistoryWaiter();
+
+            await _connection.SendAsync(
+                new MessageEnvelope
+                {
+                    Type = MessageType.MyHistoryRequest,
+                    PlayerId = EmptyToNull(_playerId),
+                    Payload = JsonSerializer.SerializeToElement(new { })
+                },
+                cancellationToken);
+
+            return await WaitForHistoryAsync(completion, cancellationToken);
+        }
+        finally
+        {
+            _historyRequestLock.Release();
+        }
+    }
+
+    public async Task<IReadOnlyList<PlayerRecordSummary>> GetTopRecordsAsync(
+        CancellationToken cancellationToken)
+    {
+        if (!await _topRecordsRequestLock.WaitAsync(0, cancellationToken).ConfigureAwait(false))
+        {
+            throw new InvalidOperationException("Hệ thống đang tải bảng xếp hạng. Vui lòng đợi.");
+        }
+
+        try
+        {
+            TaskCompletionSource<IReadOnlyList<PlayerRecordSummary>> completion = PrepareTopRecordsWaiter();
+
+            await _connection.SendAsync(
+                new MessageEnvelope
+                {
+                    Type = MessageType.TopRecordsRequest,
+                    PlayerId = EmptyToNull(_playerId),
+                    Payload = JsonSerializer.SerializeToElement(new { })
+                },
+                cancellationToken);
+
+            return await WaitForTopRecordsAsync(completion, cancellationToken);
+        }
+        finally
+        {
+            _topRecordsRequestLock.Release();
         }
     }
 
@@ -192,6 +374,75 @@ public sealed class SocketGameClientService : IGameClientService, IAsyncDisposab
             cancellationToken);
     }
 
+    public async Task SendResignAsync(CancellationToken cancellationToken = default)
+    {
+        await _connection.SendAsync(
+            new MessageEnvelope
+            {
+                Type = MessageType.Resign,
+                RoomId = EmptyToNull(_roomId),
+                PlayerId = EmptyToNull(_playerId),
+                Payload = JsonSerializer.SerializeToElement(new { })
+            },
+            cancellationToken);
+    }
+
+    public async Task SendDrawOfferAsync(CancellationToken cancellationToken = default)
+    {
+        await _connection.SendAsync(
+            new MessageEnvelope
+            {
+                Type = MessageType.DrawOffer,
+                RoomId = EmptyToNull(_roomId),
+                PlayerId = EmptyToNull(_playerId),
+                Payload = JsonSerializer.SerializeToElement(new { })
+            },
+            cancellationToken);
+    }
+
+    public async Task SendDrawResponseAsync(bool accepted, CancellationToken cancellationToken = default)
+    {
+        await _connection.SendAsync(
+            new MessageEnvelope
+            {
+                Type = MessageType.DrawResponse,
+                RoomId = EmptyToNull(_roomId),
+                PlayerId = EmptyToNull(_playerId),
+                Payload = JsonSerializer.SerializeToElement(new
+                {
+                    accepted
+                })
+            },
+            cancellationToken);
+    }
+
+    public async Task LeaveRoomAsync(CancellationToken cancellationToken = default)
+    {
+        string roomId;
+        string playerId;
+
+        lock (_stateLock)
+        {
+            roomId = _roomId;
+            playerId = _playerId;
+        }
+
+        if (!string.IsNullOrWhiteSpace(roomId))
+        {
+            await _connection.SendAsync(
+                new MessageEnvelope
+                {
+                    Type = MessageType.LeaveRoom,
+                    RoomId = EmptyToNull(roomId),
+                    PlayerId = EmptyToNull(playerId),
+                    Payload = JsonSerializer.SerializeToElement(new { })
+                },
+                cancellationToken);
+        }
+
+        ResetRoomState("Đã rời phòng.");
+    }
+
     private TaskCompletionSource<GameViewState> PrepareRoomJoinWaiter()
     {
         var completion = new TaskCompletionSource<GameViewState>(
@@ -200,6 +451,48 @@ public sealed class SocketGameClientService : IGameClientService, IAsyncDisposab
         lock (_stateLock)
         {
             _roomJoinedCompletion = completion;
+            _serverError = string.Empty;
+        }
+
+        return completion;
+    }
+
+    private TaskCompletionSource<AuthSession> PrepareAuthWaiter()
+    {
+        var completion = new TaskCompletionSource<AuthSession>(
+            TaskCreationOptions.RunContinuationsAsynchronously);
+
+        lock (_stateLock)
+        {
+            _authCompletion = completion;
+            _serverError = string.Empty;
+        }
+
+        return completion;
+    }
+
+    private TaskCompletionSource<IReadOnlyList<MatchSummary>> PrepareHistoryWaiter()
+    {
+        var completion = new TaskCompletionSource<IReadOnlyList<MatchSummary>>(
+            TaskCreationOptions.RunContinuationsAsynchronously);
+
+        lock (_stateLock)
+        {
+            _historyCompletion = completion;
+            _serverError = string.Empty;
+        }
+
+        return completion;
+    }
+
+    private TaskCompletionSource<IReadOnlyList<PlayerRecordSummary>> PrepareTopRecordsWaiter()
+    {
+        var completion = new TaskCompletionSource<IReadOnlyList<PlayerRecordSummary>>(
+            TaskCreationOptions.RunContinuationsAsynchronously);
+
+        lock (_stateLock)
+        {
+            _topRecordsCompletion = completion;
             _serverError = string.Empty;
         }
 
@@ -224,6 +517,60 @@ public sealed class SocketGameClientService : IGameClientService, IAsyncDisposab
         }
     }
 
+    private static async Task<AuthSession> WaitForAuthAsync(
+        TaskCompletionSource<AuthSession> completion,
+        CancellationToken cancellationToken)
+    {
+        using CancellationTokenSource timeoutCts = CancellationTokenSource.CreateLinkedTokenSource(
+            cancellationToken);
+        timeoutCts.CancelAfter(RequestTimeout);
+
+        try
+        {
+            return await completion.Task.WaitAsync(timeoutCts.Token);
+        }
+        catch (OperationCanceledException) when (!cancellationToken.IsCancellationRequested)
+        {
+            throw new TimeoutException("Server chưa phản hồi đăng nhập.");
+        }
+    }
+
+    private static async Task<IReadOnlyList<MatchSummary>> WaitForHistoryAsync(
+        TaskCompletionSource<IReadOnlyList<MatchSummary>> completion,
+        CancellationToken cancellationToken)
+    {
+        using CancellationTokenSource timeoutCts = CancellationTokenSource.CreateLinkedTokenSource(
+            cancellationToken);
+        timeoutCts.CancelAfter(RequestTimeout);
+
+        try
+        {
+            return await completion.Task.WaitAsync(timeoutCts.Token);
+        }
+        catch (OperationCanceledException) when (!cancellationToken.IsCancellationRequested)
+        {
+            throw new TimeoutException("Server chưa phản hồi lịch sử trận đấu.");
+        }
+    }
+
+    private static async Task<IReadOnlyList<PlayerRecordSummary>> WaitForTopRecordsAsync(
+        TaskCompletionSource<IReadOnlyList<PlayerRecordSummary>> completion,
+        CancellationToken cancellationToken)
+    {
+        using CancellationTokenSource timeoutCts = CancellationTokenSource.CreateLinkedTokenSource(
+            cancellationToken);
+        timeoutCts.CancelAfter(RequestTimeout);
+
+        try
+        {
+            return await completion.Task.WaitAsync(timeoutCts.Token);
+        }
+        catch (OperationCanceledException) when (!cancellationToken.IsCancellationRequested)
+        {
+            throw new TimeoutException("Server chưa phản hồi bảng xếp hạng.");
+        }
+    }
+
     private void Connection_MessageReceived(
         object? sender,
         ClientMessageReceivedEventArgs args)
@@ -234,6 +581,9 @@ public sealed class SocketGameClientService : IGameClientService, IAsyncDisposab
             {
                 case MessageType.HelloAccepted:
                     ApplyHelloAccepted(args.Message);
+                    break;
+                case MessageType.AuthAccepted:
+                    ApplyAuthAccepted(args.Message);
                     break;
                 case MessageType.RoomJoined:
                 case MessageType.GameStarted:
@@ -254,6 +604,15 @@ public sealed class SocketGameClientService : IGameClientService, IAsyncDisposab
                     break;
                 case MessageType.ChatReceived:
                     ApplyChatReceived(args.Message);
+                    break;
+                case MessageType.DrawOffer:
+                    ApplyDrawOffer(args.Message);
+                    break;
+                case MessageType.MyHistoryReceived:
+                    ApplyMyHistoryReceived(args.Message);
+                    break;
+                case MessageType.TopRecordsReceived:
+                    ApplyTopRecordsReceived(args.Message);
                     break;
             }
         }
@@ -278,6 +637,28 @@ public sealed class SocketGameClientService : IGameClientService, IAsyncDisposab
         PublishState();
     }
 
+    private void ApplyAuthAccepted(MessageEnvelope message)
+    {
+        AuthSession session;
+
+        lock (_stateLock)
+        {
+            session = new AuthSession(
+                FirstNonEmpty(GetString(message.Payload, "userId")),
+                FirstNonEmpty(GetString(message.Payload, "username")),
+                FirstNonEmpty(GetString(message.Payload, "displayName"), _playerName));
+
+            _currentAuth = session;
+            _playerName = session.DisplayName;
+            _playerId = FirstNonEmpty(message.PlayerId, _playerId);
+            _connectionStatus = $"Đã đăng nhập: {session.DisplayName}";
+            _serverError = string.Empty;
+        }
+
+        _authCompletion?.TrySetResult(session);
+        PublishState();
+    }
+
     private void ApplyRoomJoined(MessageEnvelope message)
     {
         lock (_stateLock)
@@ -295,10 +676,14 @@ public sealed class SocketGameClientService : IGameClientService, IAsyncDisposab
                 GetString(message.Payload, "yourSymbol"),
                 GetString(message.Payload, "symbol"),
                 _playerSymbol);
+            _opponentName = FirstNonEmpty(
+                GetString(message.Payload, "opponentName"),
+                _opponentName);
             _connectionStatus = string.IsNullOrWhiteSpace(_roomId)
                 ? "Đã vào phòng"
                 : $"Đã vào phòng {_roomId}";
             _serverError = string.Empty;
+            _hasOpponent = message.Type == MessageType.GameStarted;
 
             if (TryReadBoard(message.Payload, out string[,]? board))
             {
@@ -329,15 +714,23 @@ public sealed class SocketGameClientService : IGameClientService, IAsyncDisposab
 
     private void ApplyServerError(MessageEnvelope message)
     {
+        string error;
+
         lock (_stateLock)
         {
-            _serverError = FirstNonEmpty(
+            error = FirstNonEmpty(
                 GetString(message.Payload, "message"),
                 GetString(message.Payload, "error"),
                 GetString(message.Payload, "reason"),
                 "Server từ chối yêu cầu.");
+
+            _serverError = error;
         }
 
+        _authCompletion?.TrySetException(new InvalidOperationException(error));
+        _historyCompletion?.TrySetException(new InvalidOperationException(error));
+        _topRecordsCompletion?.TrySetException(new InvalidOperationException(error));
+        _roomJoinedCompletion?.TrySetException(new InvalidOperationException(error));
         PublishState();
     }
 
@@ -350,10 +743,22 @@ public sealed class SocketGameClientService : IGameClientService, IAsyncDisposab
                 _board = board!;
             }
 
+            UpdateScore(GetString(message.Payload, "winnerPlayerId"));
+
             string reason = GetString(message.Payload, "reason");
 
             _serverError = reason == "opponent_disconnected"
                 ? "Đối thủ đã ngắt kết nối. Bạn thắng!"
+                : reason == "resigned" && GetString(message.Payload, "winnerPlayerId") == _playerId
+                    ? "Đối thủ đầu hàng. Bạn thắng!"
+                : reason == "resigned"
+                    ? "Bạn đã đầu hàng. Bạn thua."
+                : reason == "draw_agreed"
+                    ? "Hai bên đã đồng ý hòa."
+                : reason == "timeout" && GetString(message.Payload, "winnerPlayerId") == _playerId
+                    ? "Đối thủ hết thời gian. Bạn thắng!"
+                : reason == "timeout"
+                    ? "Bạn hết thời gian. Bạn thua."
                 : FirstNonEmpty(
                     GetString(message.Payload, "message"),
                     "Ván đấu đã kết thúc.");
@@ -386,11 +791,19 @@ public sealed class SocketGameClientService : IGameClientService, IAsyncDisposab
 
     private void Connection_Disconnected(object? sender, EventArgs args)
     {
+        const string disconnectedMessage = "Mất kết nối server";
+
         lock (_stateLock)
         {
-            _connectionStatus = "Mất kết nối server";
+            _connectionStatus = disconnectedMessage;
+            _currentAuth = null;
+            _playerId = string.Empty;
         }
 
+        _authCompletion?.TrySetException(new InvalidOperationException(disconnectedMessage));
+        _historyCompletion?.TrySetException(new InvalidOperationException(disconnectedMessage));
+        _topRecordsCompletion?.TrySetException(new InvalidOperationException(disconnectedMessage));
+        _roomJoinedCompletion?.TrySetException(new InvalidOperationException(disconnectedMessage));
         PublishState();
     }
 
@@ -410,6 +823,30 @@ public sealed class SocketGameClientService : IGameClientService, IAsyncDisposab
         lock (_stateLock)
         {
             _serverError = error;
+        }
+
+        _authCompletion?.TrySetException(new InvalidOperationException(error));
+        _historyCompletion?.TrySetException(new InvalidOperationException(error));
+        _topRecordsCompletion?.TrySetException(new InvalidOperationException(error));
+        _roomJoinedCompletion?.TrySetException(new InvalidOperationException(error));
+        PublishState();
+    }
+
+    private void ResetRoomState(string connectionStatus)
+    {
+        lock (_stateLock)
+        {
+            _roomId = string.Empty;
+            _playerSymbol = "?";
+            _currentTurnSymbol = "X";
+            _opponentName = "Đối thủ";
+            _hasOpponent = false;
+            _serverError = string.Empty;
+            _connectionStatus = connectionStatus;
+            _myScore = 0;
+            _opponentScore = 0;
+            _winningCells.Clear();
+            _board = InitEmptyBoard();
         }
 
         PublishState();
@@ -433,7 +870,12 @@ public sealed class SocketGameClientService : IGameClientService, IAsyncDisposab
                 _currentTurnSymbol,
                 _connectionStatus,
                 _serverError,
-                BuildCells());
+                BuildCells(),
+                _opponentName,
+                _myScore,
+                _opponentScore,
+                _hasOpponent,
+                _playerId);
         }
     }
 
@@ -564,8 +1006,10 @@ public sealed class SocketGameClientService : IGameClientService, IAsyncDisposab
 
     public async ValueTask DisposeAsync()
     {
-        // === THÊM DÒNG NÀY VÀO ĐÂY ===
+        _authRequestLock.Dispose();
         _roomRequestLock.Dispose();
+        _historyRequestLock.Dispose();
+        _topRecordsRequestLock.Dispose();
 
         await _connection.DisposeAsync();
     }
@@ -581,10 +1025,14 @@ public sealed class SocketGameClientService : IGameClientService, IAsyncDisposab
                 GetString(message.Payload, "yourSymbol"),
                 GetString(message.Payload, "symbol"),
                 _playerSymbol);
+            _opponentName = FirstNonEmpty(
+                GetString(message.Payload, "opponentName"),
+                _opponentName);
 
             _currentTurnSymbol = ResolveCurrentTurnSymbol(message.Payload);
             _board = InitEmptyBoard();
             _serverError = string.Empty;
+            _hasOpponent = true;
             _connectionStatus = "Trận đấu mới đã bắt đầu!";
         }
 
@@ -624,6 +1072,73 @@ public sealed class SocketGameClientService : IGameClientService, IAsyncDisposab
         }
     }
 
+    private void ApplyDrawOffer(MessageEnvelope message)
+    {
+        string senderPlayerId = GetString(message.Payload, "senderPlayerId");
+        string senderName = FirstNonEmpty(
+            GetString(message.Payload, "senderName"),
+            "Đối thủ");
+
+        DrawOfferReceived?.Invoke(
+            this,
+            new DrawOfferReceivedEventArgs(senderPlayerId, senderName));
+    }
+
+    private void ApplyMyHistoryReceived(MessageEnvelope message)
+    {
+        try
+        {
+            MyHistoryReceivedPayload? payload = message.Payload.HasValue
+                ? message.Payload.Value.Deserialize<MyHistoryReceivedPayload>()
+                : null;
+
+            IReadOnlyList<MatchSummary> matches = payload?.Matches
+                .Select(match => new MatchSummary
+                {
+                    PlayerX = match.PlayerXName,
+                    PlayerO = match.PlayerOName,
+                    Winner = string.IsNullOrWhiteSpace(match.WinnerName) ? "Hòa" : match.WinnerName!,
+                    PlayedAt = match.PlayedAtUtc,
+                    MoveCount = match.MoveCount
+                })
+                .ToList() ?? [];
+
+            _historyCompletion?.TrySetResult(matches);
+        }
+        catch (Exception ex)
+        {
+            _historyCompletion?.TrySetException(
+                new InvalidOperationException($"Không thể đọc lịch sử trận đấu: {ex.Message}", ex));
+        }
+    }
+
+    private void ApplyTopRecordsReceived(MessageEnvelope message)
+    {
+        try
+        {
+            TopRecordsReceivedPayload? payload = message.Payload.HasValue
+                ? message.Payload.Value.Deserialize<TopRecordsReceivedPayload>()
+                : null;
+
+            IReadOnlyList<PlayerRecordSummary> records = payload?.Players
+                .Select(player => new PlayerRecordSummary
+                {
+                    PlayerName = player.PlayerName,
+                    Wins = player.Wins,
+                    Losses = player.Losses,
+                    Draws = player.Draws
+                })
+                .ToList() ?? [];
+
+            _topRecordsCompletion?.TrySetResult(records);
+        }
+        catch (Exception ex)
+        {
+            _topRecordsCompletion?.TrySetException(
+                new InvalidOperationException($"Không thể đọc bảng xếp hạng: {ex.Message}", ex));
+        }
+    }
+
     private static int ReadInt(JsonElement payload, params string[] propertyNames)
     {
         foreach (string propertyName in propertyNames)
@@ -637,5 +1152,22 @@ public sealed class SocketGameClientService : IGameClientService, IAsyncDisposab
         }
 
         return -1;
+    }
+
+    private void UpdateScore(string winnerPlayerId)
+    {
+        if (string.IsNullOrWhiteSpace(winnerPlayerId))
+        {
+            return;
+        }
+
+        if (winnerPlayerId == _playerId)
+        {
+            _myScore++;
+        }
+        else
+        {
+            _opponentScore++;
+        }
     }
 }

@@ -67,6 +67,29 @@ public sealed class GameRoomTests
     }
 
     [Fact]
+    public async Task JoinQuickMatch_WhenManySessionsJoinConcurrently_KeepsMaxTwoPlayersPerRoom()
+    {
+        var roomManager = new RoomManager();
+        ClientSession[] sessions = Enumerable.Range(0, 5)
+            .Select(_ => CreateDummySession())
+            .ToArray();
+
+        var results = await Task.WhenAll(
+            sessions.Select((session, index) => Task.Run(
+                () => roomManager.JoinQuickMatch(session, $"Player{index}"))));
+
+        Assert.All(results, result => Assert.NotNull(result.room));
+        Assert.Equal(3, roomManager.RoomCount);
+
+        var groupedRooms = results
+            .GroupBy(result => result.room!.RoomId)
+            .Select(group => group.Count())
+            .ToList();
+
+        Assert.All(groupedRooms, count => Assert.InRange(count, 1, 2));
+    }
+
+    [Fact]
     public void TryMakeMove_ValidMove_Succeeds()
     {
         var room = new GameRoom();
@@ -187,6 +210,82 @@ public sealed class GameRoomTests
         Assert.Equal(GameStatus.Playing, room.GameState.Status);
         Assert.Equal(0, room.GameState.MoveCount);
     }
+
+    [Fact]
+    public void HandleResign_WhenPlayerXResigns_EndsWithOWin()
+    {
+        var room = new GameRoom();
+        var s1 = CreateDummySession();
+        var s2 = CreateDummySession();
+        room.TryAddPlayer(s1, "Alice");
+        room.TryAddPlayer(s2, "Bob");
+
+        var result = room.HandleResign(s1.Id);
+
+        Assert.True(result.Success);
+        Assert.Equal(GameStatus.OWon, result.Status);
+        Assert.Equal(2, result.ActivePlayers.Count);
+    }
+
+    [Fact]
+    public void HandleDrawOffer_AndAcceptedResponse_EndsWithDraw()
+    {
+        var room = new GameRoom();
+        var s1 = CreateDummySession();
+        var s2 = CreateDummySession();
+        room.TryAddPlayer(s1, "Alice");
+        room.TryAddPlayer(s2, "Bob");
+
+        var offer = room.HandleDrawOffer(s1.Id);
+        var response = room.HandleDrawResponse(s2.Id, accepted: true);
+
+        Assert.True(offer.Success);
+        Assert.Equal(s2.Id, offer.TargetPlayer?.Id);
+        Assert.True(response.Success);
+        Assert.True(response.GameEnded);
+        Assert.Equal(GameStatus.Draw, room.GameState.Status);
+    }
+
+    [Fact]
+    public void HandleDrawResponse_WhenDeclined_ClearsPendingOfferWithoutEndingGame()
+    {
+        var room = new GameRoom();
+        var s1 = CreateDummySession();
+        var s2 = CreateDummySession();
+        room.TryAddPlayer(s1, "Alice");
+        room.TryAddPlayer(s2, "Bob");
+
+        room.HandleDrawOffer(s1.Id);
+        var response = room.HandleDrawResponse(s2.Id, accepted: false);
+
+        Assert.True(response.Success);
+        Assert.False(response.GameEnded);
+        Assert.Equal(GameStatus.Playing, room.GameState.Status);
+        Assert.Null(room.PendingDrawOfferPlayerId);
+    }
+
+    [Fact]
+    public async Task StartTurnTimeout_WhenCurrentPlayerRunsOutOfTime_AwardsOpponentWin()
+    {
+        var room = new GameRoom(TimeSpan.FromMilliseconds(30));
+        var s1 = CreateDummySession();
+        var s2 = CreateDummySession();
+        room.TryAddPlayer(s1, "Alice");
+        room.TryAddPlayer(s2, "Bob");
+        var timedOutStatus = new TaskCompletionSource<GameStatus>(
+            TaskCreationOptions.RunContinuationsAsynchronously);
+
+        room.StartTurnTimeout((_, status) =>
+        {
+            timedOutStatus.TrySetResult(status);
+            return Task.CompletedTask;
+        });
+
+        GameStatus status = await timedOutStatus.Task.WaitAsync(TimeSpan.FromSeconds(2));
+
+        Assert.Equal(GameStatus.OWon, status);
+        Assert.Equal(GameStatus.OWon, room.GameState.Status);
+    }
 }
 
 public sealed class RoomManagerTests
@@ -282,5 +381,35 @@ public sealed class RoomManagerTests
 
         Assert.NotNull(found);
         Assert.Equal(room.RoomId, found.RoomId);
+    }
+
+    [Fact]
+    public void CreateRoom_SameSessionAlreadyInRoom_ReturnsNullWithoutCreatingGhostRoom()
+    {
+        var manager = new RoomManager();
+        var session = CreateDummySession();
+        manager.CreateRoom(session, "Alice");
+
+        var secondRoom = manager.CreateRoom(session, "Alice");
+
+        Assert.Null(secondRoom);
+        Assert.Equal(1, manager.RoomCount);
+    }
+
+    [Fact]
+    public void JoinRoom_SameSessionAlreadyInRoom_ReturnsNullAndKeepsOriginalRoom()
+    {
+        var manager = new RoomManager();
+        var alice = CreateDummySession();
+        var bob = CreateDummySession();
+        var firstRoom = manager.CreateRoom(alice, "Alice")!;
+        var secondRoom = manager.CreateRoom(bob, "Bob")!;
+
+        var (joinedRoom, symbol) = manager.JoinRoom(alice, secondRoom.RoomId, "Alice");
+
+        Assert.Null(joinedRoom);
+        Assert.Null(symbol);
+        Assert.Equal(firstRoom.RoomId, manager.GetRoomBySession(alice.Id)?.RoomId);
+        Assert.False(secondRoom.IsFull);
     }
 }

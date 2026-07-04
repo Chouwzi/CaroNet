@@ -39,6 +39,7 @@
     <Compile Include="..\..\src\CaroNet.Client.WinUI\ViewModels\HistoryViewModel.cs" Link="ViewModels\HistoryViewModel.cs" />
     <Compile Include="..\..\src\CaroNet.Client.WinUI\Models\BestRecordItem.cs" Link="Models\BestRecordItem.cs" />
     <Compile Include="..\..\src\CaroNet.Client.WinUI\Models\MatchSummary.cs" Link="Models\MatchSummary.cs" />
+    <Compile Include="..\..\src\CaroNet.Client.WinUI\Models\PlayerRecordSummary.cs" Link="Models\PlayerRecordSummary.cs" />
   </ItemGroup>
 
 </Project>

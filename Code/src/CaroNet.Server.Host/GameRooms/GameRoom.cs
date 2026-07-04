@@ -12,11 +12,27 @@ namespace CaroNet.Server.Host.GameRooms;
 // Phòng chơi chứa 2 người và trạng thái ván.
 public sealed class GameRoom
 {
+    public static readonly TimeSpan DefaultTurnTimeout = TimeSpan.FromSeconds(30);
+
     private readonly object _lock = new();
     private readonly List<(string PlayerName, int Row, int Col, DateTime Timestamp)> _moveHistory = [];
     private readonly HashSet<Guid> _rematchRequests = [];
+    private readonly TimeSpan _turnTimeout;
     private System.Timers.Timer? _rematchTimer;
+    private System.Threading.Timer? _turnTimer;
+    private Func<GameRoom, GameStatus, Task>? _turnTimeoutCallback;
     private PlayerSymbol _lastStartingPlayer = PlayerSymbol.X;
+    private Guid? _pendingDrawOfferPlayerId;
+
+    public GameRoom()
+        : this(DefaultTurnTimeout)
+    {
+    }
+
+    public GameRoom(TimeSpan turnTimeout)
+    {
+        _turnTimeout = turnTimeout;
+    }
 
     public string RoomId { get; } = Random.Shared.Next(100000, 999999).ToString();
 
@@ -35,6 +51,17 @@ public sealed class GameRoom
     public bool IsFull => PlayerX is not null && PlayerO is not null;
 
     public bool IsEmpty => PlayerX is null && PlayerO is null;
+
+    public Guid? PendingDrawOfferPlayerId
+    {
+        get
+        {
+            lock (_lock)
+            {
+                return _pendingDrawOfferPlayerId;
+            }
+        }
+    }
 
     // Thêm người chơi, trả về ký hiệu (X/O) hoặc null nếu phòng đầy.
     public PlayerSymbol? TryAddPlayer(ClientSession session, string playerName)
@@ -99,6 +126,7 @@ public sealed class GameRoom
 
             if (result.IsSuccess)
             {
+                _pendingDrawOfferPlayerId = null;
                 _moveHistory.Add((playerName, row, column, DateTime.UtcNow));
 
                 // Đánh dấu thời gian bắt đầu ở nước đầu tiên
@@ -107,6 +135,31 @@ public sealed class GameRoom
             }
 
             return result;
+        }
+    }
+
+    public void StartTurnTimeout(Func<GameRoom, GameStatus, Task> onTimedOut)
+    {
+        lock (_lock)
+        {
+            _turnTimeoutCallback = onTimedOut;
+            ResetTurnTimeoutUnsafe();
+        }
+    }
+
+    public void ResetTurnTimeout()
+    {
+        lock (_lock)
+        {
+            ResetTurnTimeoutUnsafe();
+        }
+    }
+
+    public void StopTurnTimeout()
+    {
+        lock (_lock)
+        {
+            StopTurnTimeoutUnsafe();
         }
     }
 
@@ -188,6 +241,92 @@ public sealed class GameRoom
         }
     }
 
+    public (bool Success, GameStatus Status, IReadOnlyList<ClientSession> ActivePlayers) HandleResign(Guid sessionId)
+    {
+        lock (_lock)
+        {
+            if (!IsFull || GameState.Status != GameStatus.Playing)
+                return (false, GameState.Status, Array.Empty<ClientSession>());
+
+            PlayerSymbol? loser = GetPlayerSymbolUnsafe(sessionId);
+            if (loser is null)
+                return (false, GameState.Status, Array.Empty<ClientSession>());
+
+            PlayerSymbol winner = loser == PlayerSymbol.X ? PlayerSymbol.O : PlayerSymbol.X;
+            EnsureStartedAtUtcUnsafe();
+            _pendingDrawOfferPlayerId = null;
+            StopTurnTimeoutUnsafe();
+            GameState.EndByResignation(winner);
+
+            return (true, GameState.Status, GetPlayers());
+        }
+    }
+
+    public (bool Success, GameStatus Status, IReadOnlyList<ClientSession> ActivePlayers) HandleTurnTimeout()
+    {
+        lock (_lock)
+        {
+            if (!IsFull || GameState.Status != GameStatus.Playing)
+                return (false, GameState.Status, Array.Empty<ClientSession>());
+
+            PlayerSymbol loser = GameState.CurrentPlayer;
+            PlayerSymbol winner = loser == PlayerSymbol.X ? PlayerSymbol.O : PlayerSymbol.X;
+            EnsureStartedAtUtcUnsafe();
+            _pendingDrawOfferPlayerId = null;
+            StopTurnTimeoutUnsafe();
+            GameState.EndByTimeout(winner);
+
+            return (true, GameState.Status, GetPlayers());
+        }
+    }
+
+    public (bool Success, ClientSession? TargetPlayer, IReadOnlyList<ClientSession> ActivePlayers) HandleDrawOffer(Guid sessionId)
+    {
+        lock (_lock)
+        {
+            if (!IsFull || GameState.Status != GameStatus.Playing)
+                return (false, null, Array.Empty<ClientSession>());
+
+            PlayerSymbol? offerer = GetPlayerSymbolUnsafe(sessionId);
+            if (offerer is null)
+                return (false, null, Array.Empty<ClientSession>());
+
+            ClientSession? target = offerer == PlayerSymbol.X ? PlayerO : PlayerX;
+            if (target is null)
+                return (false, null, Array.Empty<ClientSession>());
+
+            _pendingDrawOfferPlayerId = sessionId;
+            return (true, target, GetPlayers());
+        }
+    }
+
+    public (bool Success, bool GameEnded, ClientSession? OfferSender, IReadOnlyList<ClientSession> ActivePlayers) HandleDrawResponse(
+        Guid sessionId,
+        bool accepted)
+    {
+        lock (_lock)
+        {
+            if (!IsFull || GameState.Status != GameStatus.Playing || _pendingDrawOfferPlayerId is null)
+                return (false, false, null, Array.Empty<ClientSession>());
+
+            if (_pendingDrawOfferPlayerId == sessionId || GetPlayerSymbolUnsafe(sessionId) is null)
+                return (false, false, null, Array.Empty<ClientSession>());
+
+            ClientSession? offerSender = GetSessionUnsafe(_pendingDrawOfferPlayerId.Value);
+            _pendingDrawOfferPlayerId = null;
+
+            if (accepted)
+            {
+                EnsureStartedAtUtcUnsafe();
+                StopTurnTimeoutUnsafe();
+                GameState.EndAsDraw();
+                return (true, true, offerSender, GetPlayers());
+            }
+
+            return (true, false, offerSender, GetPlayers());
+        }
+    }
+
     private void StartRematchTimeout()
     {
         _rematchTimer = new System.Timers.Timer(15000);
@@ -204,6 +343,59 @@ public sealed class GameRoom
             _rematchTimer.Dispose();
             _rematchTimer = null;
         }
+    }
+
+    private void ResetTurnTimeoutUnsafe()
+    {
+        if (!IsFull || GameState.Status != GameStatus.Playing || _turnTimeoutCallback is null)
+        {
+            StopTurnTimeoutUnsafe();
+            return;
+        }
+
+        _turnTimer?.Dispose();
+        _turnTimer = new System.Threading.Timer(
+            OnTurnTimeout,
+            null,
+            _turnTimeout,
+            Timeout.InfiniteTimeSpan);
+    }
+
+    private void StopTurnTimeoutUnsafe()
+    {
+        _turnTimer?.Dispose();
+        _turnTimer = null;
+    }
+
+    private void OnTurnTimeout(object? state)
+    {
+        Func<GameRoom, GameStatus, Task>? callback;
+        GameStatus status;
+
+        lock (_lock)
+        {
+            callback = _turnTimeoutCallback;
+        }
+
+        var result = HandleTurnTimeout();
+        if (!result.Success || callback is null)
+        {
+            return;
+        }
+
+        status = result.Status;
+
+        _ = Task.Run(async () =>
+        {
+            try
+            {
+                await callback(this, status);
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine($"[TURN TIMER ERROR] Room={RoomId}: {ex.Message}");
+            }
+        });
     }
 
     private void OnRematchTimeout(object? sender, ElapsedEventArgs e)
@@ -239,7 +431,9 @@ public sealed class GameRoom
     private void ExecuteRematchReset()
     {
         _rematchRequests.Clear();
+        _pendingDrawOfferPlayerId = null;
         _moveHistory.Clear();
+        StopTurnTimeoutUnsafe();
 
         // 1. Đảo lượt đi đầu tiên của ván tiếp theo
         _lastStartingPlayer = (_lastStartingPlayer == PlayerSymbol.X) ? PlayerSymbol.O : PlayerSymbol.X;
@@ -257,5 +451,20 @@ public sealed class GameRoom
         // 3. Gọi hàm reset trạng thái bàn cờ về trống và đặt lượt đi đầu tiên theo quân cờ mới
         GameState.ResetForRematch(_lastStartingPlayer);
         StartedAtUtc = DateTime.UtcNow;
+    }
+
+    private ClientSession? GetSessionUnsafe(Guid sessionId)
+    {
+        if (PlayerX?.Id == sessionId) return PlayerX;
+        if (PlayerO?.Id == sessionId) return PlayerO;
+        return null;
+    }
+
+    private void EnsureStartedAtUtcUnsafe()
+    {
+        if (StartedAtUtc == default)
+        {
+            StartedAtUtc = DateTime.UtcNow;
+        }
     }
 }
