@@ -25,7 +25,7 @@
           Padding="24">
         <ScrollViewer x:Name="MenuScrollViewer"
                       VerticalScrollBarVisibility="Auto">
-            <StackPanel MaxWidth="800"
+            <StackPanel MaxWidth="600"
                         Width="{Binding ActualWidth, ElementName=MenuScrollViewer}"
                         HorizontalAlignment="Center"
                         Spacing="18">
