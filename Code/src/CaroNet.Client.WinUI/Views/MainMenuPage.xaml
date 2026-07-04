@@ -23,8 +23,10 @@
 
     <Grid Background="{ThemeResource ApplicationPageBackgroundThemeBrush}"
           Padding="24">
-        <ScrollViewer VerticalScrollBarVisibility="Auto">
-            <StackPanel MaxWidth="680"
+        <ScrollViewer x:Name="MenuScrollViewer"
+                      VerticalScrollBarVisibility="Auto">
+            <StackPanel MaxWidth="800"
+                        Width="{Binding ActualWidth, ElementName=MenuScrollViewer}"
                         HorizontalAlignment="Center"
                         Spacing="18">
                 <TextBlock Text="CaroNet"
@@ -34,6 +36,7 @@
                            Foreground="{ThemeResource TextFillColorPrimaryBrush}"/>
 
                 <Border Padding="20"
+                        HorizontalAlignment="Stretch"
                         CornerRadius="8"
                         BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}"
                         BorderThickness="1"
@@ -116,8 +119,10 @@
                 </Border>
 
                 <Expander Header="Cài đặt server"
+                          HorizontalAlignment="Stretch"
                           IsExpanded="False">
                     <Border Padding="18"
+                            HorizontalAlignment="Stretch"
                             CornerRadius="8"
                             BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}"
                             BorderThickness="1"
@@ -148,6 +153,7 @@
                 </Expander>
 
                 <StackPanel Spacing="12"
+                            HorizontalAlignment="Stretch"
                             Visibility="{Binding IsAuthenticated, Converter={StaticResource BoolToVisibilityConverter}}">
                     <Button x:Name="QuickMatchButton"
                             MinHeight="72"
