@@ -25,18 +25,18 @@ public sealed class SocketServer
         CancellationToken cancellationToken)
     {
         _listener = new Socket(
-            AddressFamily.InterNetwork,
+            AddressFamily.InterNetwork, // Ipv4
             SocketType.Stream,
-            ProtocolType.Tcp);
+            ProtocolType.Tcp); // TCP Socket
 
         try
         {
             _listener.Bind(
                 new IPEndPoint(
-                    IPAddress.Any,
-                    ListenPort));
+                    IPAddress.Any, // Lắng nghe trên mọi card mạng
+                    ListenPort)); // Port 5000
 
-            _listener.Listen(100);
+            _listener.Listen(100); // Hàng chờ tối đa 100
 
             Console.WriteLine(
                 $"[SERVER] Listening on port {ListenPort}");
@@ -98,4 +98,4 @@ public sealed class SocketServer
                 "[SERVER] Listener socket closed.");
         }
     }
-}
+}
